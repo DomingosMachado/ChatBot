@@ -1,46 +1,57 @@
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
-from openai import OpenAI
-import os
+from pydantic import BaseModel
+from typing import List
 import json
+import os
 from dotenv import load_dotenv
-from models import ChatRequest, ChatMessage
+from openai import OpenAI
 
+# Load environment
 load_dotenv()
 
+# Initialize
 app = FastAPI()
+client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
-# CORS for Next.js
+# CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-# Initialize OpenAI client
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# Models
+class Message(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    messages: List[Message]
+
+# Routes
+@app.get("/")
+def root():
+    return {"status": "CloudWalk Chat API Running"}
 
 @app.post("/api/chat")
-async def chat_completion(request: ChatRequest):
+async def chat(request: ChatRequest):
     try:
-        # Convert messages to dict format
         messages = [{"role": msg.role, "content": msg.content} for msg in request.messages]
         
-        # Generator function for streaming
-        async def generate():
+        def generate():
             stream = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=messages,
                 stream=True,
-                temperature=0.7,
-                max_tokens=1000
+                temperature=0.7
             )
             
             for chunk in stream:
-                if chunk.choices[0].delta.content:
+                if chunk.choices[0].delta.content is not None:
                     yield f"data: {json.dumps({'content': chunk.choices[0].delta.content})}\n\n"
             
             yield "data: [DONE]\n\n"
@@ -49,12 +60,3 @@ async def chat_completion(request: ChatRequest):
         
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
-@app.get("/api/history/{session_id}")
-async def get_history(session_id: str):
-    # TODO: Implement database retrieval
-    return {"session_id": session_id, "messages": []}
-
-@app.get("/health")
-async def health_check():
-    return {"status": "healthy"}
