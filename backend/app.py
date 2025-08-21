@@ -42,6 +42,7 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
     session_id = request.session_id or str(uuid.uuid4())
     user_message = request.messages[-1]
 
+    # Save user message
     db_user_msg = Conversation(
         session_id=session_id, 
         role=user_message.role, 
@@ -54,17 +55,21 @@ async def chat(request: ChatRequest, db: Session = Depends(get_db)):
 
     try:
         def generate():
-            agent_type = agent_router.classify_query(user_message.content)
+            # Route the query with logging
+            agent_type, router_log = agent_router.classify_query(user_message.content)
             
+            # Select and execute appropriate agent with logging
             if agent_type == "math":
                 agent = MathAgent()
             else:
                 agent = KnowledgeAgent()
             
-            full_response = agent.process(user_message.content, session_id)
+            full_response, agent_log = agent.process(user_message.content, session_id)
             
+            # Send response to client
             yield f"data: {json.dumps({'content': full_response, 'session_id': session_id})}\n\n"
             
+            # Save assistant message
             assistant_tokens = count_tokens(full_response)
             db_assistant_msg = Conversation(
                 session_id=session_id, 
@@ -109,6 +114,7 @@ async def get_history(session_id: str, db: Session = Depends(get_db)):
 
 @app.get("/api/test")
 async def test_agents():
+    """Test endpoint that shows the logging system in action"""
     test_queries = [
         "O que é a maquininha Smart da InfinitePay?",
         "Quanto é 25 + 37?",
@@ -118,17 +124,37 @@ async def test_agents():
     
     results = []
     for query in test_queries:
-        agent_type = agent_router.classify_query(query)
+        # Route with logging
+        agent_type, router_log = agent_router.classify_query(query)
+        
+        # Execute with logging
         if agent_type == "math":
             agent = MathAgent()
         else:
             agent = KnowledgeAgent()
         
-        response = agent.process(query, "test-session")
+        response, agent_log = agent.process(query, "test-session")
+        
         results.append({
             "query": query,
             "agent_type": agent_type,
-            "response": response[:100] + "..." if len(response) > 100 else response
+            "response": response[:100] + "..." if len(response) > 100 else response,
+            "router_log": router_log,
+            "agent_log": agent_log
         })
     
     return {"test_results": results}
+
+@app.get("/api/logs/{session_id}")
+async def get_logs(session_id: str):
+    """Endpoint to retrieve structured logs for a session"""
+    # In a production system, you'd store logs in a database
+    # For now, this is a placeholder showing the structure
+    return {
+        "session_id": session_id,
+        "message": "Logs are currently output to console. Check server console for structured logs.",
+        "log_format": {
+            "router_logs": "JSON with timestamp, query, decision, reason, confidence",
+            "agent_logs": "JSON with agent, query, execution_time, source (for knowledge), status"
+        }
+    }
