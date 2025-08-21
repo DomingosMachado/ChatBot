@@ -1,4 +1,3 @@
-// domingosmachado/chatbot/ChatBot-c52a09916732c591151116fd44bf41bbdf5f54e5/frontend/src/app/page.tsx
 'use client';
 import { useState, useEffect, useRef } from 'react';
 
@@ -15,14 +14,12 @@ export default function Chat() {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    // Create a unique session ID for the user's conversation history
     if (!sessionId) {
-      setSessionId(crypto.randomUUID());
+      setSessionId(Math.random().toString(36).substring(2) + Date.now().toString(36));
     }
   }, [sessionId]);
 
   useEffect(() => {
-    // Automatically scroll to the latest message
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages, loading]);
 
@@ -47,7 +44,6 @@ export default function Chat() {
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
 
-      // Add a placeholder for the assistant's response
       setMessages(prev => [...prev, { role: 'assistant', content: '' }]);
 
       let done = false;
@@ -65,25 +61,23 @@ export default function Chat() {
             try {
               const parsed = JSON.parse(data);
               if (parsed.content) {
-                // Update the last message (the placeholder) with new content
                 setMessages(prev => {
                   const updatedMessages = [...prev];
                   const lastMessage = updatedMessages[updatedMessages.length - 1];
                   if (lastMessage && lastMessage.role === 'assistant') {
-                    lastMessage.content += parsed.content;
+                    lastMessage.content = parsed.content;
                   }
                   return updatedMessages;
                 });
               }
             } catch (error) {
-              // This can happen with incomplete JSON chunks, safe to ignore
+              // Ignore JSON parse errors
             }
           }
         }
       }
     } catch (error) {
       console.error('Error sending message:', error);
-      // If an error occurs, update the placeholder with an error message
       setMessages(prev => {
         const updated = [...prev];
         const last = updated[updated.length - 1];

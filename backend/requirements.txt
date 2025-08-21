@@ -7,11 +7,12 @@ tiktoken>=0.7.0
 pydantic>=2.7.0
 python-multipart>=0.0.9
 lancedb>=0.6.1
-unstructured>=0.14.9
 pdf2image>=1.17.0
 pytesseract>=0.3.10
 pillow-heif>=0.16.0
 google-generativeai>=0.5.4
+unstructured[md]>=0.14.9
+sympy>=1.12
 
 # For development
 pytest>=8.2.0
