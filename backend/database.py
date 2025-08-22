@@ -18,12 +18,10 @@ class Conversation(Base):
     tokens = Column(Integer)
     cost = Column(Float)
     created_at = Column(DateTime, default=datetime.utcnow)
-    
-    # New fields for logging
-    agent_used = Column(String, nullable=True)  # "math", "knowledge", or null for user
-    execution_time = Column(Float, nullable=True)  # in seconds
-    source = Column(Text, nullable=True)  # source of answer for knowledge agent
-    router_decision = Column(JSON, nullable=True)  # router decision details
-    agent_log = Column(JSON, nullable=True)  # full agent execution log
+    agent_used = Column(String, nullable=True)
+    execution_time = Column(Float, nullable=True)
+    source = Column(Text, nullable=True)
+    router_decision = Column(Text, nullable=True)
+    agent_log = Column(Text, nullable=True)
 
 Base.metadata.create_all(bind=engine)

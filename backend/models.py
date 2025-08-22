@@ -13,3 +13,17 @@ class ChatResponse(BaseModel):
     content: str
     tokens: int
     cost: float
+
+class ChallengeRequest(BaseModel):
+    message: str
+    user_id: str
+    conversation_id: str
+
+class AgentWorkflow(BaseModel):
+    agent: str
+    decision: str
+
+class ChallengeResponse(BaseModel):
+    response: str
+    source_agent_response: str
+    agent_workflow: List[AgentWorkflow]
