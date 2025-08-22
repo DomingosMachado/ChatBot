@@ -7,12 +7,19 @@ from dotenv import load_dotenv
 import google.generativeai as genai
 from rag import query_rag
 import hashlib
+from logger_config import setup_logger
 
 load_dotenv()
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
+router_logger = setup_logger("AgentRouter")
+knowledge_logger = setup_logger("KnowledgeAgent")
+math_logger = setup_logger("MathAgent")
+
 class AgentRouter:
-    """Routes user queries to the appropriate agent with structured logging"""
+    """
+    Routes user queries to the appropriate agent with structured logging
+    """
     
     def __init__(self):
         self.math_patterns = [
@@ -50,13 +57,11 @@ class AgentRouter:
     def classify_query(self, query: str) -> tuple[str, dict]:
         """
         Classify if query is math or knowledge-based and return decision details
-        Returns: (agent_type, decision_log)
         """
+        start_time = time.time()
         query_lower = query.lower()
         query_length = len(query)
         word_count = len(query.split())
-        
-        # Generate query hash for tracking
         query_hash = hashlib.md5(query.encode()).hexdigest()[:8]
         
         decision_log = {
@@ -77,7 +82,6 @@ class AgentRouter:
             "matches": []
         }
         
-        # Check for knowledge patterns
         for pattern, pattern_name in self.knowledge_patterns:
             decision_log["patterns_checked"]["knowledge"] += 1
             if re.search(pattern, query_lower):
@@ -89,12 +93,18 @@ class AgentRouter:
                 decision_log["decision"] = "knowledge"
                 decision_log["reason"] = f"Matched knowledge pattern: {pattern_name}"
                 decision_log["confidence"] = min(0.95, 0.7 + (0.1 * len(decision_log["matches"])))
-                decision_log["processing_time_ms"] = round((time.time() * 1000) % 1000, 2)
+                decision_log["processing_time_ms"] = round((time.time() - start_time) * 1000, 2)
                 
-                print(f"[ROUTER] {json.dumps(decision_log, ensure_ascii=False, indent=2)}")
+                router_logger.info("Query routed to KnowledgeAgent", extra={
+                    "correlation_id": query_hash,
+                    "decision": "knowledge",
+                    "confidence": decision_log["confidence"],
+                    "execution_time_ms": decision_log["processing_time_ms"],
+                    "query": query[:50]
+                })
+                
                 return "knowledge", decision_log
         
-        # Check for math patterns
         for pattern, pattern_name in self.math_patterns:
             decision_log["patterns_checked"]["math"] += 1
             if re.search(pattern, query_lower):
@@ -106,23 +116,38 @@ class AgentRouter:
                 decision_log["decision"] = "math"
                 decision_log["reason"] = f"Matched math pattern: {pattern_name}"
                 decision_log["confidence"] = min(0.95, 0.7 + (0.1 * len(decision_log["matches"])))
-                decision_log["processing_time_ms"] = round((time.time() * 1000) % 1000, 2)
+                decision_log["processing_time_ms"] = round((time.time() - start_time) * 1000, 2)
                 
-                print(f"[ROUTER] {json.dumps(decision_log, ensure_ascii=False, indent=2)}")
+                router_logger.info("Query routed to MathAgent", extra={
+                    "correlation_id": query_hash,
+                    "decision": "math",
+                    "confidence": decision_log["confidence"],
+                    "execution_time_ms": decision_log["processing_time_ms"],
+                    "query": query[:50]
+                })
+                
                 return "math", decision_log
         
-        # Default to knowledge
         decision_log["decision"] = "knowledge"
         decision_log["reason"] = "No specific pattern matched, defaulting to knowledge base"
         decision_log["confidence"] = 0.3
-        decision_log["processing_time_ms"] = round((time.time() * 1000) % 1000, 2)
+        decision_log["processing_time_ms"] = round((time.time() - start_time) * 1000, 2)
         
-        print(f"[ROUTER] {json.dumps(decision_log, ensure_ascii=False, indent=2)}")
+        router_logger.warning("Default routing to KnowledgeAgent", extra={
+            "correlation_id": query_hash,
+            "decision": "knowledge",
+            "confidence": decision_log["confidence"],
+            "execution_time_ms": decision_log["processing_time_ms"],
+            "query": query[:50]
+        })
+        
         return "knowledge", decision_log
 
 
 class KnowledgeAgent:
-    """Handles questions about InfinitePay using RAG with execution logging"""
+    """
+    Handles questions about InfinitePay using RAG with execution logging
+    """
     
     def __init__(self):
         self.version = "1.0.0"
@@ -131,7 +156,6 @@ class KnowledgeAgent:
     def process(self, query: str, session_id: str) -> tuple[str, dict]:
         """
         Process knowledge-based query with logging
-        Returns: (response, execution_log)
         """
         start_time = time.time()
         
@@ -151,11 +175,22 @@ class KnowledgeAgent:
         }
         
         try:
-            # RAG retrieval timing
+            knowledge_logger.info("Starting knowledge query processing", extra={
+                "correlation_id": session_id,
+                "query": query[:50]
+            })
+            
             rag_start = time.time()
             context = query_rag(query, "infinitepay-context")
             rag_end = time.time()
+            rag_time_ms = (rag_end - rag_start) * 1000
             log_data["metrics"]["rag_retrieval_time"] = f"{(rag_end - rag_start):.3f}s"
+            
+            knowledge_logger.info("RAG retrieval completed", extra={
+                "correlation_id": session_id,
+                "execution_time_ms": rag_time_ms,
+                "source": "infinitepay-context"
+            })
             
             if not context:
                 execution_time = time.time() - start_time
@@ -171,19 +206,22 @@ class KnowledgeAgent:
                     "status": "no_context",
                     "status_code": 204
                 })
-                print(f"[KNOWLEDGE_AGENT] {json.dumps(log_data, ensure_ascii=False, indent=2)}")
+                
+                knowledge_logger.warning("No context found", extra={
+                    "correlation_id": session_id,
+                    "execution_time_ms": execution_time * 1000
+                })
+                
                 return "Desculpe, não encontrei informações sobre isso na base de conhecimento da InfinitePay.", log_data
             
-            # Log the source details
             log_data["source"] = {
                 "type": "rag",
                 "database": "infinitepay-context",
                 "context_length": len(context),
                 "context_preview": context[:100] + "..." if len(context) > 100 else context,
-                "chunks_retrieved": 3  # Assuming top 3 chunks from RAG
+                "chunks_retrieved": 3
             }
             
-            # Create prompt with context
             prompt = f"""
 Você é um assistente da InfinitePay. Use APENAS as informações do contexto para responder.
 
@@ -195,11 +233,11 @@ PERGUNTA: {query}
 Responda de forma clara e útil baseado apenas no contexto fornecido.
 """
             
-            # LLM generation timing
             llm_start = time.time()
             model = genai.GenerativeModel(self.model)
             response = model.generate_content(prompt)
             llm_end = time.time()
+            llm_time_ms = (llm_end - llm_start) * 1000
             log_data["metrics"]["llm_generation_time"] = f"{(llm_end - llm_start):.3f}s"
             
             execution_time = time.time() - start_time
@@ -217,7 +255,13 @@ Responda de forma clara e útil baseado apenas no contexto fornecido.
                 "status_code": 200
             })
             
-            print(f"[KNOWLEDGE_AGENT] {json.dumps(log_data, ensure_ascii=False, indent=2)}")
+            knowledge_logger.info("Knowledge query processed successfully", extra={
+                "correlation_id": session_id,
+                "execution_time_ms": execution_time * 1000,
+                "tokens": len(response.text.split()),
+                "response_preview": response.text[:50]
+            })
+            
             return response.text, log_data
             
         except Exception as e:
@@ -232,15 +276,23 @@ Responda de forma clara e útil baseado apenas no contexto fornecido.
                 "error": {
                     "type": type(e).__name__,
                     "message": str(e),
-                    "traceback": None  # Could add traceback in debug mode
+                    "traceback": None
                 }
             })
-            print(f"[KNOWLEDGE_AGENT_ERROR] {json.dumps(log_data, ensure_ascii=False, indent=2)}")
+            
+            knowledge_logger.error("Knowledge query processing failed", extra={
+                "correlation_id": session_id,
+                "execution_time_ms": execution_time * 1000,
+                "error": str(e)
+            }, exc_info=True)
+            
             return f"Erro ao processar sua pergunta: {str(e)}", log_data
 
 
 class MathAgent:
-    """Simple math using Gemini with execution logging"""
+    """
+    Simple math using Gemini with execution logging
+    """
     
     def __init__(self):
         self.version = "1.0.0"
@@ -249,11 +301,8 @@ class MathAgent:
     def process(self, query: str, session_id: str) -> tuple[str, dict]:
         """
         Process mathematical query with logging
-        Returns: (response, execution_log)
         """
         start_time = time.time()
-        
-        # Try to extract the mathematical expression
         math_expression = self._extract_math_expression(query)
         
         log_data = {
@@ -271,6 +320,11 @@ class MathAgent:
                 "start_time": start_time
             }
         }
+        
+        math_logger.info("Starting math calculation", extra={
+            "correlation_id": session_id,
+            "query": query[:50]
+        })
         
         prompt = f"""
 Você é uma calculadora. Responda APENAS com o cálculo e resultado final.
@@ -290,6 +344,7 @@ Resposta (APENAS o cálculo e resultado):
             model = genai.GenerativeModel(self.model)
             response = model.generate_content(prompt)
             llm_end = time.time()
+            llm_time_ms = (llm_end - llm_start) * 1000
             
             execution_time = time.time() - start_time
             log_data.update({
@@ -306,7 +361,12 @@ Resposta (APENAS o cálculo e resultado):
                 "status_code": 200
             })
             
-            print(f"[MATH_AGENT] {json.dumps(log_data, ensure_ascii=False, indent=2)}")
+            math_logger.info("Math calculation completed", extra={
+                "correlation_id": session_id,
+                "execution_time_ms": execution_time * 1000,
+                "response_preview": response.text.strip()[:50]
+            })
+            
             return response.text.strip(), log_data
             
         except Exception as e:
@@ -323,12 +383,19 @@ Resposta (APENAS o cálculo e resultado):
                     "message": str(e)
                 }
             })
-            print(f"[MATH_AGENT_ERROR] {json.dumps(log_data, ensure_ascii=False, indent=2)}")
+            
+            math_logger.error("Math calculation failed", extra={
+                "correlation_id": session_id,
+                "execution_time_ms": execution_time * 1000,
+                "error": str(e)
+            }, exc_info=True)
+            
             return f"Erro no cálculo: {str(e)}", log_data
     
     def _extract_math_expression(self, query: str) -> str:
-        """Extract mathematical expression from query"""
-        # Simple regex to find math patterns
+        """
+        Extract mathematical expression from query
+        """
         patterns = [
             r'\d+\s*[+\-*/÷×]\s*\d+',
             r'\d+\s*%\s*de\s*\d+',
@@ -341,7 +408,9 @@ Resposta (APENAS o cálculo e resultado):
         return query
     
     def _identify_operation(self, query: str) -> str:
-        """Identify the type of mathematical operation"""
+        """
+        Identify the type of mathematical operation
+        """
         query_lower = query.lower()
         if any(op in query_lower for op in ['+', 'mais', 'somar', 'soma']):
             return "addition"
@@ -358,7 +427,6 @@ Resposta (APENAS o cálculo e resultado):
         return "complex"
 
 
-# Test the improved logging system
 if __name__ == "__main__":
     router = AgentRouter()
     knowledge_agent = KnowledgeAgent()
@@ -371,7 +439,7 @@ if __name__ == "__main__":
         "(42 * 2) / 6"
     ]
     
-    print("=== Testing Improved Agent System with Professional Logging ===\n")
+    print("=== Testing Agent System with Professional Logging ===\n")
     for query in test_queries:
         print(f"Query: {query}")
         agent_type, router_log = router.classify_query(query)
