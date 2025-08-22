@@ -6,6 +6,7 @@ from datetime import datetime
 from dotenv import load_dotenv
 import google.generativeai as genai
 from rag import query_rag
+import hashlib
 
 load_dotenv()
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
@@ -15,35 +16,35 @@ class AgentRouter:
     
     def __init__(self):
         self.math_patterns = [
-            r'\d+\s*[+\-*/÷×]\s*\d+',
-            r'calcul|calculadora',
-            r'quanto\s+(é|eh|e)\s+',
-            r'qual\s+(é|eh|e)\s+o\s+resultado',
-            r'somar|subtrair|multiplicar|dividir',
-            r'soma|subtração|multiplicação|divisão',
-            r'\+|\-|\*|\/|=',
-            r'porcentagem|%',
-            r'\d+\s*%',
-            r'vezes|vez',
-            r'mais|menos',
-            r'dividido\s+por',
-            r'elevado\s+a',
-            r'ao\s+quadrado|ao\s+cubo',
-            r'raiz\s+quadrada|raiz\s+de',
-            r'fatorial',
-            r'exponencial',
-            r'\d+\s*\^\s*\d+',
+            (r'\d+\s*[+\-*/÷×]\s*\d+', 'arithmetic_operation'),
+            (r'calcul|calculadora', 'calculator_keyword'),
+            (r'quanto\s+(é|eh|e)\s+', 'how_much_question'),
+            (r'qual\s+(é|eh|e)\s+o\s+resultado', 'result_question'),
+            (r'somar|subtrair|multiplicar|dividir', 'math_verbs'),
+            (r'soma|subtração|multiplicação|divisão', 'math_nouns'),
+            (r'\+|\-|\*|\/|=', 'math_symbols'),
+            (r'porcentagem|%', 'percentage'),
+            (r'\d+\s*%', 'percentage_value'),
+            (r'vezes|vez', 'multiplication_keyword'),
+            (r'mais|menos', 'addition_subtraction'),
+            (r'dividido\s+por', 'division_keyword'),
+            (r'elevado\s+a', 'exponentiation'),
+            (r'ao\s+quadrado|ao\s+cubo', 'power_keywords'),
+            (r'raiz\s+quadrada|raiz\s+de', 'square_root'),
+            (r'fatorial', 'factorial'),
+            (r'exponencial', 'exponential'),
+            (r'\d+\s*\^\s*\d+', 'power_notation'),
         ]
         
         self.knowledge_patterns = [
-            r'o\s+que\s+(é|eh|e)',
-            r'como\s+funciona',
-            r'quais\s+são',
-            r'infinitepay|maquininha|app|pix|taxa',
-            r'conta\s+inteligente',
-            r'empréstimo',
-            r'cartão\s+virtual',
-            r'nitro|receba\s+na\s+hora',
+            (r'o\s+que\s+(é|eh|e)', 'what_is_question'),
+            (r'como\s+funciona', 'how_works_question'),
+            (r'quais\s+são', 'which_are_question'),
+            (r'infinitepay|maquininha|app|pix|taxa', 'infinitepay_keywords'),
+            (r'conta\s+inteligente', 'smart_account'),
+            (r'empréstimo', 'loan'),
+            (r'cartão\s+virtual', 'virtual_card'),
+            (r'nitro|receba\s+na\s+hora', 'instant_payment'),
         ]
     
     def classify_query(self, query: str) -> tuple[str, dict]:
@@ -52,51 +53,80 @@ class AgentRouter:
         Returns: (agent_type, decision_log)
         """
         query_lower = query.lower()
-        decision_time = datetime.utcnow().isoformat()
+        query_length = len(query)
+        word_count = len(query.split())
+        
+        # Generate query hash for tracking
+        query_hash = hashlib.md5(query.encode()).hexdigest()[:8]
+        
+        decision_log = {
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "router": "AgentRouter",
+            "version": "1.0.0",
+            "query_metadata": {
+                "original": query,
+                "normalized": query_lower,
+                "length": query_length,
+                "word_count": word_count,
+                "query_hash": query_hash
+            },
+            "patterns_checked": {
+                "knowledge": 0,
+                "math": 0
+            },
+            "matches": []
+        }
         
         # Check for knowledge patterns
-        for pattern in self.knowledge_patterns:
+        for pattern, pattern_name in self.knowledge_patterns:
+            decision_log["patterns_checked"]["knowledge"] += 1
             if re.search(pattern, query_lower):
-                decision_log = {
-                    "timestamp": decision_time,
-                    "router": "AgentRouter",
-                    "query": query,
-                    "decision": "knowledge",
-                    "reason": f"Matched knowledge pattern: {pattern}",
-                    "confidence": 0.95
-                }
-                print(f"[ROUTER LOG] {json.dumps(decision_log, ensure_ascii=False)}")
+                decision_log["matches"].append({
+                    "type": "knowledge",
+                    "pattern": pattern_name,
+                    "matched_text": re.search(pattern, query_lower).group()
+                })
+                decision_log["decision"] = "knowledge"
+                decision_log["reason"] = f"Matched knowledge pattern: {pattern_name}"
+                decision_log["confidence"] = min(0.95, 0.7 + (0.1 * len(decision_log["matches"])))
+                decision_log["processing_time_ms"] = round((time.time() * 1000) % 1000, 2)
+                
+                print(f"[ROUTER] {json.dumps(decision_log, ensure_ascii=False, indent=2)}")
                 return "knowledge", decision_log
         
         # Check for math patterns
-        for pattern in self.math_patterns:
+        for pattern, pattern_name in self.math_patterns:
+            decision_log["patterns_checked"]["math"] += 1
             if re.search(pattern, query_lower):
-                decision_log = {
-                    "timestamp": decision_time,
-                    "router": "AgentRouter",
-                    "query": query,
-                    "decision": "math",
-                    "reason": f"Matched math pattern: {pattern}",
-                    "confidence": 0.95
-                }
-                print(f"[ROUTER LOG] {json.dumps(decision_log, ensure_ascii=False)}")
+                decision_log["matches"].append({
+                    "type": "math",
+                    "pattern": pattern_name,
+                    "matched_text": re.search(pattern, query_lower).group()
+                })
+                decision_log["decision"] = "math"
+                decision_log["reason"] = f"Matched math pattern: {pattern_name}"
+                decision_log["confidence"] = min(0.95, 0.7 + (0.1 * len(decision_log["matches"])))
+                decision_log["processing_time_ms"] = round((time.time() * 1000) % 1000, 2)
+                
+                print(f"[ROUTER] {json.dumps(decision_log, ensure_ascii=False, indent=2)}")
                 return "math", decision_log
         
         # Default to knowledge
-        decision_log = {
-            "timestamp": decision_time,
-            "router": "AgentRouter",
-            "query": query,
-            "decision": "knowledge",
-            "reason": "No specific pattern matched, defaulting to knowledge",
-            "confidence": 0.5
-        }
-        print(f"[ROUTER LOG] {json.dumps(decision_log, ensure_ascii=False)}")
+        decision_log["decision"] = "knowledge"
+        decision_log["reason"] = "No specific pattern matched, defaulting to knowledge base"
+        decision_log["confidence"] = 0.3
+        decision_log["processing_time_ms"] = round((time.time() * 1000) % 1000, 2)
+        
+        print(f"[ROUTER] {json.dumps(decision_log, ensure_ascii=False, indent=2)}")
         return "knowledge", decision_log
 
 
 class KnowledgeAgent:
     """Handles questions about InfinitePay using RAG with execution logging"""
+    
+    def __init__(self):
+        self.version = "1.0.0"
+        self.model = "gemini-1.5-flash"
     
     def process(self, query: str, session_id: str) -> tuple[str, dict]:
         """
@@ -104,29 +134,54 @@ class KnowledgeAgent:
         Returns: (response, execution_log)
         """
         start_time = time.time()
+        
         log_data = {
             "agent": "KnowledgeAgent",
+            "version": self.version,
+            "model": self.model,
             "query": query,
             "session_id": session_id,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "metrics": {
+                "start_time": start_time,
+                "rag_retrieval_time": None,
+                "llm_generation_time": None,
+                "total_execution_time": None
+            }
         }
         
         try:
-            # Get relevant context from RAG
+            # RAG retrieval timing
+            rag_start = time.time()
             context = query_rag(query, "infinitepay-context")
+            rag_end = time.time()
+            log_data["metrics"]["rag_retrieval_time"] = f"{(rag_end - rag_start):.3f}s"
             
             if not context:
                 execution_time = time.time() - start_time
                 log_data.update({
-                    "source": "No context found",
-                    "execution_time": f"{execution_time:.3f}s",
-                    "status": "no_context"
+                    "source": {
+                        "type": "none",
+                        "message": "No relevant context found in knowledge base"
+                    },
+                    "metrics": {
+                        **log_data["metrics"],
+                        "total_execution_time": f"{execution_time:.3f}s"
+                    },
+                    "status": "no_context",
+                    "status_code": 204
                 })
-                print(f"[KNOWLEDGE LOG] {json.dumps(log_data, ensure_ascii=False)}")
+                print(f"[KNOWLEDGE_AGENT] {json.dumps(log_data, ensure_ascii=False, indent=2)}")
                 return "Desculpe, não encontrei informações sobre isso na base de conhecimento da InfinitePay.", log_data
             
-            # Log the source
-            log_data["source"] = f"RAG context (InfinitePay docs) - {len(context)} chars"
+            # Log the source details
+            log_data["source"] = {
+                "type": "rag",
+                "database": "infinitepay-context",
+                "context_length": len(context),
+                "context_preview": context[:100] + "..." if len(context) > 100 else context,
+                "chunks_retrieved": 3  # Assuming top 3 chunks from RAG
+            }
             
             # Create prompt with context
             prompt = f"""
@@ -140,33 +195,56 @@ PERGUNTA: {query}
 Responda de forma clara e útil baseado apenas no contexto fornecido.
 """
             
-            # Generate response
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            # LLM generation timing
+            llm_start = time.time()
+            model = genai.GenerativeModel(self.model)
             response = model.generate_content(prompt)
+            llm_end = time.time()
+            log_data["metrics"]["llm_generation_time"] = f"{(llm_end - llm_start):.3f}s"
             
             execution_time = time.time() - start_time
             log_data.update({
-                "execution_time": f"{execution_time:.3f}s",
+                "metrics": {
+                    **log_data["metrics"],
+                    "total_execution_time": f"{execution_time:.3f}s"
+                },
+                "response_metadata": {
+                    "length": len(response.text),
+                    "language": "pt-BR",
+                    "tokens_estimated": len(response.text.split())
+                },
                 "status": "success",
-                "response_length": len(response.text)
+                "status_code": 200
             })
             
-            print(f"[KNOWLEDGE LOG] {json.dumps(log_data, ensure_ascii=False)}")
+            print(f"[KNOWLEDGE_AGENT] {json.dumps(log_data, ensure_ascii=False, indent=2)}")
             return response.text, log_data
             
         except Exception as e:
             execution_time = time.time() - start_time
             log_data.update({
-                "execution_time": f"{execution_time:.3f}s",
+                "metrics": {
+                    **log_data["metrics"],
+                    "total_execution_time": f"{execution_time:.3f}s"
+                },
                 "status": "error",
-                "error": str(e)
+                "status_code": 500,
+                "error": {
+                    "type": type(e).__name__,
+                    "message": str(e),
+                    "traceback": None  # Could add traceback in debug mode
+                }
             })
-            print(f"[KNOWLEDGE LOG] {json.dumps(log_data, ensure_ascii=False)}")
+            print(f"[KNOWLEDGE_AGENT_ERROR] {json.dumps(log_data, ensure_ascii=False, indent=2)}")
             return f"Erro ao processar sua pergunta: {str(e)}", log_data
 
 
 class MathAgent:
     """Simple math using Gemini with execution logging"""
+    
+    def __init__(self):
+        self.version = "1.0.0"
+        self.model = "gemini-1.5-flash"
     
     def process(self, query: str, session_id: str) -> tuple[str, dict]:
         """
@@ -174,11 +252,24 @@ class MathAgent:
         Returns: (response, execution_log)
         """
         start_time = time.time()
+        
+        # Try to extract the mathematical expression
+        math_expression = self._extract_math_expression(query)
+        
         log_data = {
             "agent": "MathAgent",
+            "version": self.version,
+            "model": self.model,
             "query": query,
             "session_id": session_id,
-            "timestamp": datetime.utcnow().isoformat()
+            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "math_metadata": {
+                "extracted_expression": math_expression,
+                "operation_type": self._identify_operation(query)
+            },
+            "metrics": {
+                "start_time": start_time
+            }
         }
         
         prompt = f"""
@@ -195,31 +286,79 @@ Resposta (APENAS o cálculo e resultado):
 """
         
         try:
-            model = genai.GenerativeModel('gemini-1.5-flash')
+            llm_start = time.time()
+            model = genai.GenerativeModel(self.model)
             response = model.generate_content(prompt)
+            llm_end = time.time()
             
             execution_time = time.time() - start_time
             log_data.update({
-                "execution_time": f"{execution_time:.3f}s",
+                "metrics": {
+                    **log_data["metrics"],
+                    "llm_generation_time": f"{(llm_end - llm_start):.3f}s",
+                    "total_execution_time": f"{execution_time:.3f}s"
+                },
+                "response_metadata": {
+                    "result": response.text.strip(),
+                    "format": "calculation_result"
+                },
                 "status": "success",
-                "llm_used": "gemini-1.5-flash"
+                "status_code": 200
             })
             
-            print(f"[MATH LOG] {json.dumps(log_data, ensure_ascii=False)}")
+            print(f"[MATH_AGENT] {json.dumps(log_data, ensure_ascii=False, indent=2)}")
             return response.text.strip(), log_data
             
         except Exception as e:
             execution_time = time.time() - start_time
             log_data.update({
-                "execution_time": f"{execution_time:.3f}s",
+                "metrics": {
+                    **log_data["metrics"],
+                    "total_execution_time": f"{execution_time:.3f}s"
+                },
                 "status": "error",
-                "error": str(e)
+                "status_code": 500,
+                "error": {
+                    "type": type(e).__name__,
+                    "message": str(e)
+                }
             })
-            print(f"[MATH LOG] {json.dumps(log_data, ensure_ascii=False)}")
+            print(f"[MATH_AGENT_ERROR] {json.dumps(log_data, ensure_ascii=False, indent=2)}")
             return f"Erro no cálculo: {str(e)}", log_data
+    
+    def _extract_math_expression(self, query: str) -> str:
+        """Extract mathematical expression from query"""
+        # Simple regex to find math patterns
+        patterns = [
+            r'\d+\s*[+\-*/÷×]\s*\d+',
+            r'\d+\s*%\s*de\s*\d+',
+            r'\(\s*\d+\s*[+\-*/]\s*\d+\s*\)\s*[+\-*/]\s*\d+'
+        ]
+        for pattern in patterns:
+            match = re.search(pattern, query)
+            if match:
+                return match.group()
+        return query
+    
+    def _identify_operation(self, query: str) -> str:
+        """Identify the type of mathematical operation"""
+        query_lower = query.lower()
+        if any(op in query_lower for op in ['+', 'mais', 'somar', 'soma']):
+            return "addition"
+        elif any(op in query_lower for op in ['-', 'menos', 'subtrair']):
+            return "subtraction"
+        elif any(op in query_lower for op in ['*', '×', 'x', 'vezes', 'multiplicar']):
+            return "multiplication"
+        elif any(op in query_lower for op in ['/', '÷', 'dividir', 'dividido']):
+            return "division"
+        elif '%' in query_lower or 'porcentagem' in query_lower:
+            return "percentage"
+        elif '^' in query_lower or 'elevado' in query_lower:
+            return "exponentiation"
+        return "complex"
 
 
-# Test the logging system
+# Test the improved logging system
 if __name__ == "__main__":
     router = AgentRouter()
     knowledge_agent = KnowledgeAgent()
@@ -229,10 +368,10 @@ if __name__ == "__main__":
         "O que é a maquininha Smart?",
         "Quanto é 25 + 37?",
         "Como funciona o InfiniteTap?",
-        "Calcule 15% de 200"
+        "(42 * 2) / 6"
     ]
     
-    print("=== Testing Agent System with Logging ===\n")
+    print("=== Testing Improved Agent System with Professional Logging ===\n")
     for query in test_queries:
         print(f"Query: {query}")
         agent_type, router_log = router.classify_query(query)

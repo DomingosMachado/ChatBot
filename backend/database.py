@@ -1,5 +1,4 @@
-
-from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text
+from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, JSON
 from sqlalchemy.orm import sessionmaker, declarative_base
 from datetime import datetime
 import os
@@ -19,5 +18,12 @@ class Conversation(Base):
     tokens = Column(Integer)
     cost = Column(Float)
     created_at = Column(DateTime, default=datetime.utcnow)
+    
+    # New fields for logging
+    agent_used = Column(String, nullable=True)  # "math", "knowledge", or null for user
+    execution_time = Column(Float, nullable=True)  # in seconds
+    source = Column(Text, nullable=True)  # source of answer for knowledge agent
+    router_decision = Column(JSON, nullable=True)  # router decision details
+    agent_log = Column(JSON, nullable=True)  # full agent execution log
 
 Base.metadata.create_all(bind=engine)
