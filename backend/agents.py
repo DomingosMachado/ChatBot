@@ -3,6 +3,7 @@ import os
 import time
 import json
 from datetime import datetime, timezone
+from typing import Tuple, Dict, Any
 from dotenv import load_dotenv
 import google.generativeai as genai
 from rag import query_rag
@@ -17,9 +18,7 @@ knowledge_logger = setup_logger("KnowledgeAgent")
 math_logger = setup_logger("MathAgent")
 
 class AgentRouter:
-    """
-    Routes user queries to the appropriate agent with structured logging
-    """
+    """Routes user queries to the appropriate specialized agent."""
     
     def __init__(self):
         self.math_patterns = [
@@ -54,9 +53,15 @@ class AgentRouter:
             (r'nitro|receba\s+na\s+hora', 'instant_payment'),
         ]
     
-    def classify_query(self, query: str) -> tuple[str, dict]:
+    def classify_query(self, query: str) -> Tuple[str, Dict[str, Any]]:
         """
-        Classify if query is math or knowledge-based and return decision details
+        Classify query as math or knowledge-based.
+        
+        Args:
+            query: User's input question
+            
+        Returns:
+            Tuple of (agent_type, decision_log)
         """
         start_time = time.time()
         query_lower = query.lower()
@@ -145,17 +150,22 @@ class AgentRouter:
 
 
 class KnowledgeAgent:
-    """
-    Handles questions about InfinitePay using RAG with execution logging
-    """
+    """Handles InfinitePay questions using RAG vector search."""
     
     def __init__(self):
         self.version = "1.0.0"
         self.model = "gemini-1.5-flash"
     
-    def process(self, query: str, session_id: str) -> tuple[str, dict]:
+    def process(self, query: str, session_id: str) -> Tuple[str, Dict[str, Any]]:
         """
-        Process knowledge-based query with logging
+        Process knowledge-based query using vector search.
+        
+        Args:
+            query: User's question
+            session_id: Conversation session ID
+            
+        Returns:
+            Tuple of (response_text, execution_log)
         """
         start_time = time.time()
         
@@ -290,17 +300,22 @@ Responda de forma clara e útil baseado apenas no contexto fornecido.
 
 
 class MathAgent:
-    """
-    Simple math using Gemini with execution logging
-    """
+    """Handles mathematical calculations using Gemini LLM."""
     
     def __init__(self):
         self.version = "1.0.0"
         self.model = "gemini-1.5-flash"
     
-    def process(self, query: str, session_id: str) -> tuple[str, dict]:
+    def process(self, query: str, session_id: str) -> Tuple[str, Dict[str, Any]]:
         """
-        Process mathematical query with logging
+        Process mathematical query.
+        
+        Args:
+            query: Math question or expression
+            session_id: Conversation session ID
+            
+        Returns:
+            Tuple of (calculation_result, execution_log)
         """
         start_time = time.time()
         math_expression = self._extract_math_expression(query)
@@ -393,9 +408,7 @@ Resposta (APENAS o cálculo e resultado):
             return f"Erro no cálculo: {str(e)}", log_data
     
     def _extract_math_expression(self, query: str) -> str:
-        """
-        Extract mathematical expression from query
-        """
+        """Extract mathematical expression from natural language query."""
         patterns = [
             r'\d+\s*[+\-*/÷×]\s*\d+',
             r'\d+\s*%\s*de\s*\d+',
@@ -408,9 +421,7 @@ Resposta (APENAS o cálculo e resultado):
         return query
     
     def _identify_operation(self, query: str) -> str:
-        """
-        Identify the type of mathematical operation
-        """
+        """Identify the type of mathematical operation."""
         query_lower = query.lower()
         if any(op in query_lower for op in ['+', 'mais', 'somar', 'soma']):
             return "addition"
