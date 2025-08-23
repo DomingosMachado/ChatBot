@@ -2,7 +2,7 @@ import re
 import os
 import time
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from dotenv import load_dotenv
 import google.generativeai as genai
 from rag import query_rag
@@ -65,7 +65,7 @@ class AgentRouter:
         query_hash = hashlib.md5(query.encode()).hexdigest()[:8]
         
         decision_log = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "router": "AgentRouter",
             "version": "1.0.0",
             "query_metadata": {
@@ -165,7 +165,7 @@ class KnowledgeAgent:
             "model": self.model,
             "query": query,
             "session_id": session_id,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "metrics": {
                 "start_time": start_time,
                 "rag_retrieval_time": None,
@@ -311,7 +311,7 @@ class MathAgent:
             "model": self.model,
             "query": query,
             "session_id": session_id,
-            "timestamp": datetime.utcnow().isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat(),
             "math_metadata": {
                 "extracted_expression": math_expression,
                 "operation_type": self._identify_operation(query)
@@ -425,29 +425,3 @@ Resposta (APENAS o cálculo e resultado):
         elif '^' in query_lower or 'elevado' in query_lower:
             return "exponentiation"
         return "complex"
-
-
-if __name__ == "__main__":
-    router = AgentRouter()
-    knowledge_agent = KnowledgeAgent()
-    math_agent = MathAgent()
-    
-    test_queries = [
-        "O que é a maquininha Smart?",
-        "Quanto é 25 + 37?",
-        "Como funciona o InfiniteTap?",
-        "(42 * 2) / 6"
-    ]
-    
-    print("=== Testing Agent System with Professional Logging ===\n")
-    for query in test_queries:
-        print(f"Query: {query}")
-        agent_type, router_log = router.classify_query(query)
-        
-        if agent_type == "math":
-            response, agent_log = math_agent.process(query, "test-session")
-        else:
-            response, agent_log = knowledge_agent.process(query, "test-session")
-        
-        print(f"Response: {response[:100]}..." if len(response) > 100 else f"Response: {response}")
-        print("-" * 80 + "\n")
