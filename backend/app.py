@@ -9,7 +9,7 @@ from sqlalchemy import select, desc
 from dotenv import load_dotenv
 import google.generativeai as genai
 from typing import List, Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel, ValidationError
 
 from database import SessionLocal, Conversation
@@ -18,6 +18,7 @@ from utils.token_counter import count_tokens
 from agents import AgentRouter, KnowledgeAgent, MathAgent
 from validators import ChallengeRequestValidator, QueryValidator, ResponseValidator
 from constants import APIConfig, QueryLimits, ResponseLimits, DatabaseConfig, ErrorMessages
+from redis_client import redis_client
 
 load_dotenv()
 
@@ -76,7 +77,14 @@ async def chat_challenge_format(request: ChallengeRequest, db: Session = Depends
     )
     db.add(db_user_msg)
     db.commit()
-    
+
+    # Store in Redis for fast access
+    redis_client.store_conversation(session_id, {
+        "role": "user",
+        "content": user_message,
+        "timestamp": datetime.now(timezone.utc).isoformat()
+    })
+
     try:
         agent_type, router_log = agent_router.classify_query(user_message, user_id, session_id)
         
@@ -117,6 +125,14 @@ async def chat_challenge_format(request: ChallengeRequest, db: Session = Depends
         )
         db.add(db_assistant_msg)
         db.commit()
+
+        # Store assistant response in Redis
+        redis_client.store_conversation(session_id, {
+            "role": "assistant",
+            "content": full_response,
+            "agent": agent_type,
+            "timestamp": datetime.now(timezone.utc).isoformat()
+        })
         
         workflow = [
             AgentWorkflow(agent="RouterAgent", decision=agent_name),

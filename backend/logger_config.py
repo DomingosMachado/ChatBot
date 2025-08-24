@@ -55,3 +55,11 @@ def setup_logger(name):
     
     logger.propagate = False
     return logger
+
+def log_to_redis(log_entry: dict):
+    """Send logs to Redis for centralized logging."""
+    try:
+        from redis_client import redis_client
+        redis_client.lpush("application_logs", json.dumps(log_entry))
+    except:
+        pass  # Fail silently if Redis is not available

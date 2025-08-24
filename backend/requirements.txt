@@ -13,6 +13,7 @@ pillow-heif>=0.16.0
 google-generativeai>=0.5.4
 unstructured[md]>=0.14.9
 sympy>=1.12
+redis>=4.5.0
 
 # For development
 pytest>=8.2.0
