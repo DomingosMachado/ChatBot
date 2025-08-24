@@ -1,6 +1,6 @@
 from sqlalchemy import create_engine, Column, Integer, String, Float, DateTime, Text, JSON
 from sqlalchemy.orm import sessionmaker, declarative_base
-from datetime import datetime
+from datetime import datetime, timezone
 import os
 
 Base = declarative_base()
@@ -17,7 +17,7 @@ class Conversation(Base):
     content = Column(Text)
     tokens = Column(Integer)
     cost = Column(Float)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     agent_used = Column(String, nullable=True)
     execution_time = Column(Float, nullable=True)
     source = Column(Text, nullable=True)

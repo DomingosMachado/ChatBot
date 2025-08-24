@@ -1,4 +1,6 @@
-from pydantic import BaseModel
+"""Pydantic models for API requests and responses."""
+
+from pydantic import BaseModel, Field
 from typing import List, Optional
 
 class ChatMessage(BaseModel):
@@ -21,7 +23,7 @@ class ChallengeRequest(BaseModel):
 
 class AgentWorkflow(BaseModel):
     agent: str
-    decision: str
+    decision: str = ""
 
 class ChallengeResponse(BaseModel):
     response: str

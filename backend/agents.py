@@ -3,7 +3,7 @@ import os
 import time
 import json
 from datetime import datetime, timezone
-from typing import Tuple, Dict, Any
+from typing import Tuple, Dict, Any, Optional
 from dotenv import load_dotenv
 import google.generativeai as genai
 from rag import query_rag
@@ -53,12 +53,14 @@ class AgentRouter:
             (r'nitro|receba\s+na\s+hora', 'instant_payment'),
         ]
     
-    def classify_query(self, query: str) -> Tuple[str, Dict[str, Any]]:
+    def classify_query(self, query: str, user_id: Optional[str] = None, conversation_id: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
         """
         Classify query as math or knowledge-based.
         
         Args:
             query: User's input question
+            user_id: User identifier for logging
+            conversation_id: Conversation ID for tracking
             
         Returns:
             Tuple of (agent_type, decision_log)
@@ -67,7 +69,7 @@ class AgentRouter:
         query_lower = query.lower()
         query_length = len(query)
         word_count = len(query.split())
-        query_hash = hashlib.md5(query.encode()).hexdigest()[:8]
+        query_hash = hashlib.md5(f"{conversation_id or ''}{query}{time.time()}".encode()).hexdigest()[:8]
         
         decision_log = {
             "timestamp": datetime.now(timezone.utc).isoformat(),
@@ -101,8 +103,10 @@ class AgentRouter:
                 decision_log["processing_time_ms"] = round((time.time() - start_time) * 1000, 2)
                 
                 router_logger.info("Query routed to KnowledgeAgent", extra={
-                    "correlation_id": query_hash,
-                    "decision": "knowledge",
+                    "conversation_id": conversation_id,
+                    "user_id": user_id,
+                    "agent": "RouterAgent",
+                    "decision": "KnowledgeAgent",
                     "confidence": decision_log["confidence"],
                     "execution_time_ms": decision_log["processing_time_ms"],
                     "query": query[:50]
@@ -124,8 +128,10 @@ class AgentRouter:
                 decision_log["processing_time_ms"] = round((time.time() - start_time) * 1000, 2)
                 
                 router_logger.info("Query routed to MathAgent", extra={
-                    "correlation_id": query_hash,
-                    "decision": "math",
+                    "conversation_id": conversation_id,
+                    "user_id": user_id,
+                    "agent": "RouterAgent",
+                    "decision": "MathAgent",
                     "confidence": decision_log["confidence"],
                     "execution_time_ms": decision_log["processing_time_ms"],
                     "query": query[:50]
@@ -139,8 +145,10 @@ class AgentRouter:
         decision_log["processing_time_ms"] = round((time.time() - start_time) * 1000, 2)
         
         router_logger.warning("Default routing to KnowledgeAgent", extra={
-            "correlation_id": query_hash,
-            "decision": "knowledge",
+            "conversation_id": conversation_id,
+            "user_id": user_id,
+            "agent": "RouterAgent",
+            "decision": "KnowledgeAgent",
             "confidence": decision_log["confidence"],
             "execution_time_ms": decision_log["processing_time_ms"],
             "query": query[:50]
@@ -156,13 +164,14 @@ class KnowledgeAgent:
         self.version = "1.0.0"
         self.model = "gemini-1.5-flash"
     
-    def process(self, query: str, session_id: str) -> Tuple[str, Dict[str, Any]]:
+    def process(self, query: str, session_id: str, user_id: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
         """
         Process knowledge-based query using vector search.
         
         Args:
             query: User's question
             session_id: Conversation session ID
+            user_id: User identifier for logging
             
         Returns:
             Tuple of (response_text, execution_log)
@@ -175,6 +184,7 @@ class KnowledgeAgent:
             "model": self.model,
             "query": query,
             "session_id": session_id,
+            "user_id": user_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "metrics": {
                 "start_time": start_time,
@@ -186,7 +196,9 @@ class KnowledgeAgent:
         
         try:
             knowledge_logger.info("Starting knowledge query processing", extra={
-                "correlation_id": session_id,
+                "conversation_id": session_id,
+                "user_id": user_id,
+                "agent": "KnowledgeAgent",
                 "query": query[:50]
             })
             
@@ -197,7 +209,9 @@ class KnowledgeAgent:
             log_data["metrics"]["rag_retrieval_time"] = f"{(rag_end - rag_start):.3f}s"
             
             knowledge_logger.info("RAG retrieval completed", extra={
-                "correlation_id": session_id,
+                "conversation_id": session_id,
+                "user_id": user_id,
+                "agent": "KnowledgeAgent",
                 "execution_time_ms": rag_time_ms,
                 "source": "infinitepay-context"
             })
@@ -218,7 +232,9 @@ class KnowledgeAgent:
                 })
                 
                 knowledge_logger.warning("No context found", extra={
-                    "correlation_id": session_id,
+                    "conversation_id": session_id,
+                    "user_id": user_id,
+                    "agent": "KnowledgeAgent",
                     "execution_time_ms": execution_time * 1000
                 })
                 
@@ -266,7 +282,9 @@ Responda de forma clara e útil baseado apenas no contexto fornecido.
             })
             
             knowledge_logger.info("Knowledge query processed successfully", extra={
-                "correlation_id": session_id,
+                "conversation_id": session_id,
+                "user_id": user_id,
+                "agent": "KnowledgeAgent",
                 "execution_time_ms": execution_time * 1000,
                 "tokens": len(response.text.split()),
                 "response_preview": response.text[:50]
@@ -291,7 +309,9 @@ Responda de forma clara e útil baseado apenas no contexto fornecido.
             })
             
             knowledge_logger.error("Knowledge query processing failed", extra={
-                "correlation_id": session_id,
+                "conversation_id": session_id,
+                "user_id": user_id,
+                "agent": "KnowledgeAgent",
                 "execution_time_ms": execution_time * 1000,
                 "error": str(e)
             }, exc_info=True)
@@ -306,13 +326,14 @@ class MathAgent:
         self.version = "1.0.0"
         self.model = "gemini-1.5-flash"
     
-    def process(self, query: str, session_id: str) -> Tuple[str, Dict[str, Any]]:
+    def process(self, query: str, session_id: str, user_id: Optional[str] = None) -> Tuple[str, Dict[str, Any]]:
         """
         Process mathematical query.
         
         Args:
             query: Math question or expression
             session_id: Conversation session ID
+            user_id: User identifier for logging
             
         Returns:
             Tuple of (calculation_result, execution_log)
@@ -326,6 +347,7 @@ class MathAgent:
             "model": self.model,
             "query": query,
             "session_id": session_id,
+            "user_id": user_id,
             "timestamp": datetime.now(timezone.utc).isoformat(),
             "math_metadata": {
                 "extracted_expression": math_expression,
@@ -337,7 +359,9 @@ class MathAgent:
         }
         
         math_logger.info("Starting math calculation", extra={
-            "correlation_id": session_id,
+            "conversation_id": session_id,
+            "user_id": user_id,
+            "agent": "MathAgent",
             "query": query[:50]
         })
         
@@ -377,7 +401,9 @@ Resposta (APENAS o cálculo e resultado):
             })
             
             math_logger.info("Math calculation completed", extra={
-                "correlation_id": session_id,
+                "conversation_id": session_id,
+                "user_id": user_id,
+                "agent": "MathAgent",
                 "execution_time_ms": execution_time * 1000,
                 "response_preview": response.text.strip()[:50]
             })
@@ -400,7 +426,9 @@ Resposta (APENAS o cálculo e resultado):
             })
             
             math_logger.error("Math calculation failed", extra={
-                "correlation_id": session_id,
+                "conversation_id": session_id,
+                "user_id": user_id,
+                "agent": "MathAgent",
                 "execution_time_ms": execution_time * 1000,
                 "error": str(e)
             }, exc_info=True)

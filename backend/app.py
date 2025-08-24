@@ -10,21 +10,23 @@ from dotenv import load_dotenv
 import google.generativeai as genai
 from typing import List, Optional
 from datetime import datetime, timedelta
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from database import SessionLocal, Conversation
 from models import ChatRequest, ChatMessage, ChallengeRequest, ChallengeResponse, AgentWorkflow
 from utils.token_counter import count_tokens
 from agents import AgentRouter, KnowledgeAgent, MathAgent
+from validators import ChallengeRequestValidator, QueryValidator, ResponseValidator
+from constants import APIConfig, QueryLimits, ResponseLimits, DatabaseConfig, ErrorMessages
 
 load_dotenv()
 
-app = FastAPI()
+app = FastAPI(title="CloudWalk AI Chat API", version="1.0.0")
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
 
 app.add_middleware(
     CORSMiddleware, 
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000", "http://192.168.1.67:3000"],
+    allow_origins=APIConfig.CORS_ORIGINS,
     allow_credentials=True, 
     allow_methods=["*"], 
     allow_headers=["*"],
@@ -41,12 +43,26 @@ def get_db():
 
 @app.post("/chat", response_model=ChallengeResponse)
 async def chat_challenge_format(request: ChallengeRequest, db: Session = Depends(get_db)):
-    """
-    Challenge-compliant chat endpoint with exact response format
-    """
-    session_id = request.conversation_id
-    user_message = request.message
-    user_id = request.user_id
+    """Challenge-compliant chat endpoint with validation."""
+    
+    try:
+        validated_request = ChallengeRequestValidator(
+            message=request.message,
+            user_id=request.user_id,
+            conversation_id=request.conversation_id
+        )
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=e.errors())
+    
+    session_id = validated_request.conversation_id
+    user_message = QueryValidator.sanitize_query(validated_request.message)
+    user_id = validated_request.user_id
+    
+    if len(user_message) > QueryLimits.MAX_QUERY_LENGTH:
+        raise HTTPException(status_code=400, detail=f"Message too long (max {QueryLimits.MAX_QUERY_LENGTH} characters)")
+    
+    if not QueryValidator.check_prompt_injection(user_message):
+        raise HTTPException(status_code=400, detail="Suspicious input detected")
     
     db_user_msg = Conversation(
         session_id=session_id, 
@@ -62,7 +78,7 @@ async def chat_challenge_format(request: ChallengeRequest, db: Session = Depends
     db.commit()
     
     try:
-        agent_type, router_log = agent_router.classify_query(user_message)
+        agent_type, router_log = agent_router.classify_query(user_message, user_id, session_id)
         
         if agent_type == "math":
             agent = MathAgent()
@@ -71,7 +87,9 @@ async def chat_challenge_format(request: ChallengeRequest, db: Session = Depends
             agent = KnowledgeAgent()
             agent_name = "KnowledgeAgent"
         
-        full_response, agent_log = agent.process(user_message, session_id)
+        full_response, agent_log = agent.process(user_message, session_id, user_id)
+        
+        full_response = ResponseValidator.validate_response(full_response)
         
         assistant_tokens = count_tokens(full_response)
         
@@ -105,6 +123,9 @@ async def chat_challenge_format(request: ChallengeRequest, db: Session = Depends
             AgentWorkflow(agent=agent_name, decision="")
         ]
         
+        if not ResponseValidator.validate_workflow([w.dict() for w in workflow]):
+            raise ValueError("Invalid workflow structure")
+        
         response = ChallengeResponse(
             response=full_response,
             source_agent_response=source_info,
@@ -113,22 +134,31 @@ async def chat_challenge_format(request: ChallengeRequest, db: Session = Depends
         
         return response
         
+    except ValidationError as e:
+        raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=ErrorMessages.GENERIC_ERROR)
 
 @app.post("/api/chat")
 async def chat_streaming(request: ChatRequest, db: Session = Depends(get_db)):
-    """
-    Original streaming chat endpoint for the frontend
-    """
+    """Streaming chat endpoint with validation."""
+    
     session_id = request.session_id or str(uuid.uuid4())
+    
+    if not QueryValidator.validate_session_id(session_id):
+        session_id = str(uuid.uuid4())
+    
     user_message = request.messages[-1]
+    sanitized_content = QueryValidator.sanitize_query(user_message.content)
+    
+    if not QueryValidator.check_prompt_injection(sanitized_content):
+        raise HTTPException(status_code=400, detail="Suspicious input detected")
 
     db_user_msg = Conversation(
         session_id=session_id, 
         role=user_message.role, 
-        content=user_message.content,
-        tokens=count_tokens(user_message.content), 
+        content=sanitized_content,
+        tokens=count_tokens(sanitized_content), 
         cost=0,
         agent_used=None,
         execution_time=None,
@@ -139,14 +169,15 @@ async def chat_streaming(request: ChatRequest, db: Session = Depends(get_db)):
 
     try:
         def generate():
-            agent_type, router_log = agent_router.classify_query(user_message.content)
+            agent_type, router_log = agent_router.classify_query(sanitized_content)
             
             if agent_type == "math":
                 agent = MathAgent()
             else:
                 agent = KnowledgeAgent()
             
-            full_response, agent_log = agent.process(user_message.content, session_id)
+            full_response, agent_log = agent.process(sanitized_content, session_id)
+            full_response = ResponseValidator.validate_response(full_response)
             
             yield f"data: {json.dumps({'content': full_response, 'session_id': session_id})}\n\n"
             
@@ -177,19 +208,24 @@ async def chat_streaming(request: ChatRequest, db: Session = Depends(get_db)):
         return StreamingResponse(generate(), media_type="text/event-stream")
     
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=ErrorMessages.GENERIC_ERROR)
 
 @app.get("/api/history/{session_id}")
 async def get_history(session_id: str, db: Session = Depends(get_db)):
-    """
-    Get conversation history with enhanced logging details
-    """
+    """Get conversation history with validation."""
+    
+    if not QueryValidator.validate_session_id(session_id):
+        raise HTTPException(status_code=400, detail=ErrorMessages.INVALID_REQUEST)
+    
     try:
         stmt = select(Conversation).where(
             Conversation.session_id == session_id
-        ).order_by(Conversation.created_at)
+        ).order_by(Conversation.created_at).limit(DatabaseConfig.MAX_QUERY_RESULTS)
         
         conversations = db.execute(stmt).scalars().all()
+        
+        if not conversations:
+            raise HTTPException(status_code=404, detail=ErrorMessages.SESSION_NOT_FOUND)
         
         return {
             "session_id": session_id,
@@ -208,14 +244,14 @@ async def get_history(session_id: str, db: Session = Depends(get_db)):
                 for conv in conversations
             ]
         }
+    except HTTPException:
+        raise
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=ErrorMessages.GENERIC_ERROR)
 
 @app.get("/api/sessions")
 async def get_all_sessions(db: Session = Depends(get_db)):
-    """
-    Get all unique session IDs with their latest activity
-    """
+    """Get all unique session IDs with their latest activity."""
     try:
         sessions = db.query(
             Conversation.session_id,
@@ -224,32 +260,30 @@ async def get_all_sessions(db: Session = Depends(get_db)):
         ).distinct(Conversation.session_id).order_by(
             Conversation.session_id, 
             desc(Conversation.created_at)
-        ).all()
+        ).limit(DatabaseConfig.MAX_QUERY_RESULTS).all()
         
         return {
             "sessions": [
                 {
                     "session_id": session[0],
                     "last_activity": session[1].isoformat() if session[1] else None,
-                    "last_message_preview": session[2][:100] if session[2] else None
+                    "last_message_preview": session[2][:DatabaseConfig.SESSION_PREVIEW_LENGTH] if session[2] else None
                 }
                 for session in sessions
             ],
             "total_sessions": len(sessions)
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=ErrorMessages.GENERIC_ERROR)
 
 @app.get("/api/analytics")
 async def get_analytics(db: Session = Depends(get_db)):
-    """
-    Get analytics about agent usage and performance
-    """
+    """Get analytics about agent usage and performance."""
     try:
         assistant_msgs = db.query(Conversation).filter(
             Conversation.role == 'assistant',
             Conversation.agent_used.isnot(None)
-        ).all()
+        ).limit(DatabaseConfig.MAX_QUERY_RESULTS).all()
         
         if not assistant_msgs:
             return {
@@ -287,24 +321,26 @@ async def get_analytics(db: Session = Depends(get_db)):
             ]
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=ErrorMessages.GENERIC_ERROR)
 
 @app.get("/api/logs/recent")
 async def get_recent_logs(
-    limit: int = 20,
+    limit: int = DatabaseConfig.RECENT_LOGS_DEFAULT_LIMIT,
     agent_type: Optional[str] = None,
     db: Session = Depends(get_db)
 ):
-    """
-    Get recent logs with optional filtering by agent type
-    """
+    """Get recent logs with optional filtering by agent type."""
+    
+    if limit > DatabaseConfig.MAX_QUERY_RESULTS:
+        limit = DatabaseConfig.MAX_QUERY_RESULTS
+    
     try:
         query = db.query(Conversation).filter(
             Conversation.role == 'assistant',
             Conversation.agent_log.isnot(None)
         )
         
-        if agent_type:
+        if agent_type and agent_type in ['math', 'knowledge']:
             query = query.filter(Conversation.agent_used == agent_type)
         
         logs = query.order_by(desc(Conversation.created_at)).limit(limit).all()
@@ -320,11 +356,16 @@ async def get_recent_logs(
                     "source": json.loads(log.source) if log.source else None,
                     "router_decision": json.loads(log.router_decision) if log.router_decision else None,
                     "agent_log": json.loads(log.agent_log) if log.agent_log else None,
-                    "content_preview": log.content[:100] + "..." if len(log.content) > 100 else log.content
+                    "content_preview": log.content[:DatabaseConfig.SESSION_PREVIEW_LENGTH] + "..." if len(log.content) > DatabaseConfig.SESSION_PREVIEW_LENGTH else log.content
                 }
                 for log in logs
             ],
             "total": len(logs)
         }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=ErrorMessages.GENERIC_ERROR)
+
+@app.get("/health")
+async def health_check():
+    """Health check endpoint."""
+    return {"status": "healthy", "version": "1.0.0"}

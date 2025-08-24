@@ -1,15 +1,14 @@
 import logging
 import json
 import sys
-from datetime import datetime
+from datetime import datetime, timezone
 
 class JSONFormatter(logging.Formatter):
-    """
-    Custom JSON formatter for structured logging
-    """
+    """Custom JSON formatter for structured logging."""
+    
     def format(self, record):
         log_obj = {
-            "timestamp": datetime.now(datetime.UTC).isoformat() + "Z",
+            "timestamp": datetime.now(timezone.utc).isoformat() + "Z",
             "level": record.levelname,
             "logger": record.name,
             "message": record.getMessage(),
@@ -18,8 +17,10 @@ class JSONFormatter(logging.Formatter):
             "line": record.lineno
         }
         
-        if hasattr(record, 'correlation_id'):
-            log_obj['correlation_id'] = record.correlation_id
+        if hasattr(record, 'conversation_id'):
+            log_obj['conversation_id'] = record.conversation_id
+        if hasattr(record, 'user_id'):
+            log_obj['user_id'] = record.user_id
         if hasattr(record, 'agent'):
             log_obj['agent'] = record.agent
         if hasattr(record, 'execution_time_ms'):
@@ -43,9 +44,7 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(log_obj, ensure_ascii=False)
 
 def setup_logger(name):
-    """
-    Setup logger with JSON formatting
-    """
+    """Setup logger with JSON formatting."""
     logger = logging.getLogger(name)
     logger.setLevel(logging.INFO)
     
