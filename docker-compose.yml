@@ -1,0 +1,38 @@
+version: "3.8"
+
+services:
+  backend:
+    build: ./backend
+    container_name: cloudwalk-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - GOOGLE_API_KEY=${GOOGLE_API_KEY}
+      - REDIS_URL=${REDIS_URL}
+      - DATABASE_URL=sqlite:///./chat_history.db
+    volumes:
+      - ./backend:/app
+      - backend-data:/app/data
+    networks:
+      - cloudwalk-network
+    restart: unless-stopped
+
+  frontend:
+    build: ./frontend
+    container_name: cloudwalk-frontend
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    environment:
+      - NEXT_PUBLIC_API_URL=http://backend:8000
+    networks:
+      - cloudwalk-network
+    restart: unless-stopped
+
+volumes:
+  backend-data:
+
+networks:
+  cloudwalk-network:
+    driver: bridge
