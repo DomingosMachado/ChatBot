@@ -1,8 +1,30 @@
+/* Add Google Fonts import for Cera Pro */
+@import url("https://fonts.googleapis.com/css2?family=Cera+Pro:wght@400;500;700&display=swap");
 @import "tailwindcss";
 
 :root {
   --background: #ffffff;
   --foreground: #171717;
+
+  /* InfinitePay color palette */
+  --infinite-purple-600: #6e08f2;
+  --infinite-purple-200: #a880ff;
+  --infinite-purple-0: #dcccff;
+
+  --infinite-green-500: #baff1a;
+  --infinite-green-300: #d9ff80;
+  --infinite-green-100: #f6ffe0;
+
+  --infinite-yellow-500: #ff9d00;
+  --infinite-yellow-200: #ffd899;
+  --infinite-yellow-100: #ffebcc;
+
+  --infinite-neutral-900: #121212;
+  --infinite-neutral-800: #323232;
+  --infinite-neutral-400: #c7c7c7;
+  --infinite-neutral-200: #eeeeee;
+
+  --font-primary: "Cera Pro", sans-serif;
 }
 
 @theme inline {
@@ -29,12 +51,140 @@ html {
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-  line-height: 1.6;
+  margin: 0;
+  font-family: var(--font-primary);
+  background-color: var(--infinite-neutral-900);
+  color: var(--infinite-neutral-200);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  line-height: 1.6;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6 {
+  font-weight: 700; /* Bold */
+  color: var(--infinite-green-500);
+}
+
+p {
+  font-weight: 400; /* Regular */
+  line-height: 1.6;
+}
+
+button {
+  font-family: var(--font-primary);
+  font-weight: 500; /* Medium */
+  background-color: var(--infinite-green-500);
+  color: var(--infinite-neutral-900);
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: background-color 0.3s ease;
+}
+
+button:hover {
+  background-color: var(--infinite-green-300);
+}
+
+/* Accent links and horizontal rules */
+a {
+  color: var(--infinite-purple-600);
+  text-decoration: none;
+  font-weight: 500;
+  transition: color 0.2s;
+}
+a:hover {
+  color: var(--infinite-green-500);
+}
+
+hr {
+  border: none;
+  border-top: 2px solid var(--infinite-purple-200);
+  margin: 2rem 0;
+}
+
+/* Card & container styling */
+.card,
+.container,
+.message {
+  background: var(--infinite-neutral-800);
+  border-radius: 16px;
+  box-shadow: 0 2px 12px rgba(110, 8, 242, 0.08);
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  border: 1px solid var(--infinite-purple-0);
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  background: var(--infinite-neutral-900);
+}
+::-webkit-scrollbar-thumb {
+  background: var(--infinite-purple-200);
+  border-radius: 8px;
+}
+
+/* Input & form elements */
+input,
+textarea {
+  font-family: var(--font-primary);
+  background: var(--infinite-neutral-800);
+  color: var(--infinite-neutral-200);
+  border: 1px solid var(--infinite-purple-0);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 1rem;
+  transition: border-color 0.2s;
+}
+input:focus,
+textarea:focus {
+  border-color: var(--infinite-purple-600);
+  outline: none;
+}
+
+/* Brand gradient for headers or buttons */
+.brand-gradient {
+  background: linear-gradient(
+    90deg,
+    var(--infinite-purple-600),
+    var(--infinite-green-500)
+  );
+  color: var(--infinite-neutral-900);
+  padding: 1rem 2rem;
+  border-radius: 12px;
+  font-weight: 700;
+  box-shadow: 0 2px 8px rgba(186, 255, 26, 0.08);
+}
+
+/* Avatar or icon accent */
+.avatar,
+.icon {
+  border: 2px solid var(--infinite-purple-600);
+  border-radius: 50%;
+  box-shadow: 0 0 0 4px var(--infinite-purple-0);
+}
+
+/* Subtle bounce animation for loading indicators */
+.loading-indicator {
+  animation: bounce 1.2s infinite;
+  color: var(--infinite-green-500);
+}
+
+/* Section headings accent */
+.section-title {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--infinite-purple-600);
+  border-bottom: 3px solid var(--infinite-green-500);
+  padding-bottom: 0.5rem;
+  margin-bottom: 1.5rem;
 }
 
 @media (max-width: 640px) {
@@ -45,7 +195,7 @@ body {
 
 @supports (font-variation-settings: normal) {
   body {
-    font-family: var(--font-sans), system-ui, sans-serif;
+    font-family: var(--font-primary), system-ui, sans-serif;
   }
 }
 
@@ -62,10 +212,15 @@ body {
 }
 
 @keyframes bounce {
-  0%, 20%, 53%, 80%, 100% {
+  0%,
+  20%,
+  53%,
+  80%,
+  100% {
     transform: translate3d(0, 0, 0);
   }
-  40%, 43% {
+  40%,
+  43% {
     transform: translate3d(0, -8px, 0);
   }
   70% {
@@ -84,7 +239,7 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
-  
+
   html {
     scroll-behavior: auto;
   }

@@ -6,7 +6,9 @@
       "Bash(python:*)",
       "Bash(timeout:*)",
       "Bash(mv:*)",
-      "Bash(rm:*)"
+      "Bash(rm:*)",
+      "Bash(del test_redis.py test_redis_integration.py test_logger.py test_logging_compliance.py test_chat_endpoint.py test_complete_system.py test_models.py test_rag_system.py)",
+      "Bash(powershell:*)"
     ],
     "deny": []
   }

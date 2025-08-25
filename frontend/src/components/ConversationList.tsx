@@ -28,38 +28,38 @@ export default function ConversationList({
 
   return (
     <>
-      {/* Mobile overlay */}
-      {isOpen && (
-        <div 
+      {/* Mobile overlay */ }
+      { isOpen && (
+        <div
           className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-          onClick={onClose}
+          onClick={ onClose }
         />
-      )}
-      
-      {/* Sidebar */}
-      <div className={`
+      ) }
+
+      {/* Sidebar */ }
+      <div className={ `
         fixed left-0 top-0 h-full w-80 bg-white dark:bg-gray-900 border-r border-gray-200 dark:border-gray-700 z-50
         transform transition-transform duration-300 ease-in-out
         lg:relative lg:translate-x-0 lg:z-auto
         ${isOpen ? 'translate-x-0' : '-translate-x-full'}
       `}>
-        {/* Header */}
+        {/* Header */ }
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
               Conversations
             </h2>
             <button
-              onClick={onClose}
+              onClick={ onClose }
               className="lg:hidden text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
               aria-label="Close sidebar"
             >
               ✕
             </button>
           </div>
-          
+
           <button
-            onClick={handleNewConversation}
+            onClick={ handleNewConversation }
             className="w-full bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
           >
             <span className="text-lg">+</span>
@@ -67,9 +67,9 @@ export default function ConversationList({
           </button>
         </div>
 
-        {/* Conversations List */}
+        {/* Conversations List */ }
         <div className="flex-1 overflow-y-auto p-2">
-          {conversations.length === 0 ? (
+          { conversations.length === 0 ? (
             <div className="p-4 text-center text-gray-500 dark:text-gray-400">
               <div className="text-4xl mb-2">💬</div>
               <p className="text-sm">No conversations yet</p>
@@ -77,23 +77,23 @@ export default function ConversationList({
             </div>
           ) : (
             <div className="space-y-1">
-              {conversations.map((conversation) => (
+              { conversations.map((conversation) => (
                 <ConversationItem
-                  key={conversation.conversation_id}
-                  conversation={conversation}
-                  isActive={conversation.conversation_id === activeConversationId}
-                  onClick={() => {
+                  key={ conversation.conversation_id }
+                  conversation={ conversation }
+                  isActive={ conversation.conversation_id === activeConversationId }
+                  onClick={ () => {
                     onSelectConversation(conversation.conversation_id);
                     onClose(); // Close mobile sidebar when selecting conversation
-                  }}
-                  onDelete={() => onDeleteConversation(conversation.conversation_id)}
+                  } }
+                  onDelete={ () => onDeleteConversation(conversation.conversation_id) }
                 />
-              ))}
+              )) }
             </div>
-          )}
+          ) }
         </div>
 
-        {/* Footer */}
+        {/* Footer */ }
         <div className="p-4 border-t border-gray-200 dark:border-gray-700">
           <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
             CloudWalk AI Chat Assistant
