@@ -1,8 +1,9 @@
 """Input validation for API requests."""
 
 import re
+import html
 from typing import Optional
-from pydantic import BaseModel, Field, validator
+from pydantic import BaseModel, Field, field_validator
 
 class ChallengeRequestValidator(BaseModel):
     """Validates challenge endpoint requests."""
@@ -11,7 +12,7 @@ class ChallengeRequestValidator(BaseModel):
     user_id: str = Field(..., min_length=1, max_length=100)
     conversation_id: str = Field(..., min_length=1, max_length=100)
     
-    @validator('message')
+    @field_validator('message')
     def validate_message(cls, v):
         v = v.strip()
         if not v:
@@ -20,7 +21,7 @@ class ChallengeRequestValidator(BaseModel):
             raise ValueError("Message too long (max 1000 characters)")
         return v
     
-    @validator('user_id', 'conversation_id')
+    @field_validator('user_id', 'conversation_id')
     def validate_ids(cls, v):
         if not re.match(r'^[a-zA-Z0-9_-]+$', v):
             raise ValueError("ID must contain only alphanumeric characters, hyphens, and underscores")
@@ -39,6 +40,7 @@ class QueryValidator:
             return ""
         
         query = query.strip()
+        query = html.escape(query)
         
         query = re.sub(r'[<>\"\'`;]', '', query)
         

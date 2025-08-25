@@ -1,7 +1,9 @@
 import os
 import uuid
 import json
-from fastapi import FastAPI, HTTPException, Depends
+from collections import defaultdict
+from time import time
+from fastapi import FastAPI, HTTPException, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse
 from sqlalchemy.orm import Session
@@ -21,6 +23,21 @@ from constants import APIConfig, QueryLimits, ResponseLimits, DatabaseConfig, Er
 from redis_client import redis_client
 
 load_dotenv()
+
+# Simple in-memory rate limiting
+request_counts = defaultdict(list)
+
+def check_rate_limit(ip: str) -> bool:
+    now = time()
+    request_counts[ip] = [t for t in request_counts[ip] if now - t < 60]
+    if len(request_counts[ip]) >= 30:
+        return False
+    request_counts[ip].append(now)
+    return True
+
+# Startup validation
+if not os.getenv("GOOGLE_API_KEY"):
+    print("WARNING: GOOGLE_API_KEY not found in environment variables!")
 
 app = FastAPI(title="CloudWalk AI Chat API", version="1.0.0")
 genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
@@ -49,6 +66,7 @@ async def health_check():
     
     return {
         "status": "healthy",
+        "version": "1.0.0",
         "timestamp": datetime.now(timezone.utc).isoformat(),
         "redis": redis_health,
         "database": "sqlite_operational",
@@ -59,8 +77,18 @@ async def health_check():
     }
 
 @app.post("/chat", response_model=ChallengeResponse)
-async def chat_challenge_format(request: ChallengeRequest, db: Session = Depends(get_db)):
+async def chat_challenge_format(request: ChallengeRequest, http_request: Request, db: Session = Depends(get_db)):
     """Challenge-compliant chat endpoint with validation."""
+    
+    # Rate limiting check
+    client_ip = http_request.client.host if http_request.client else "unknown"
+    if not check_rate_limit(client_ip):
+        raise HTTPException(status_code=429, detail="Rate limit exceeded. Please try again later.")
+    
+    # Request size check
+    body = await http_request.body()
+    if len(body) > 10240:  # 10KB max
+        raise HTTPException(status_code=413, detail="Request too large")
     
     try:
         validated_request = ChallengeRequestValidator(
@@ -161,7 +189,7 @@ async def chat_challenge_format(request: ChallengeRequest, db: Session = Depends
             AgentWorkflow(agent=agent_name, decision="")
         ]
         
-        if not ResponseValidator.validate_workflow([w.dict() for w in workflow]):
+        if not ResponseValidator.validate_workflow([w.model_dump() for w in workflow]):
             raise ValueError("Invalid workflow structure")
         
         response = ChallengeResponse(

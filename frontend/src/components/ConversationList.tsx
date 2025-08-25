@@ -47,12 +47,12 @@ export default function ConversationList({
         <div className="p-4 border-b border-gray-200 dark:border-gray-700">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-lg font-semibold text-gray-800 dark:text-gray-200">
-              Conversations
+              Conversas
             </h2>
             <button
               onClick={ onClose }
               className="lg:hidden text-gray-500 hover:text-gray-700 dark:hover:text-gray-300"
-              aria-label="Close sidebar"
+              aria-label="Fechar menu"
             >
               ✕
             </button>
@@ -63,7 +63,7 @@ export default function ConversationList({
             className="w-full bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded-lg transition-colors flex items-center justify-center gap-2"
           >
             <span className="text-lg">+</span>
-            New Conversation
+            Nova Conversa
           </button>
         </div>
 
@@ -72,8 +72,8 @@ export default function ConversationList({
           { conversations.length === 0 ? (
             <div className="p-4 text-center text-gray-500 dark:text-gray-400">
               <div className="text-4xl mb-2">💬</div>
-              <p className="text-sm">No conversations yet</p>
-              <p className="text-xs mt-1">Start a new conversation to get started!</p>
+              <p className="text-sm">Nenhuma conversa ainda</p>
+              <p className="text-xs mt-1">Comece uma nova conversa para começar!</p>
             </div>
           ) : (
             <div className="space-y-1">
@@ -96,7 +96,7 @@ export default function ConversationList({
         {/* Footer */ }
         <div className="p-4 border-t border-gray-200 dark:border-gray-700">
           <div className="text-xs text-gray-500 dark:text-gray-400 text-center">
-            CloudWalk AI Chat Assistant
+            InfinitePay Chat Assistant
           </div>
         </div>
       </div>

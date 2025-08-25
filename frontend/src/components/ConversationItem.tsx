@@ -11,7 +11,7 @@ export default function ConversationItem({ conversation, isActive, onClick, onDe
   const lastMessage = conversation.messages[conversation.messages.length - 1];
   const lastMessagePreview = lastMessage ?
     (lastMessage.content.slice(0, 60) + (lastMessage.content.length > 60 ? '...' : '')) :
-    'No messages yet';
+    'Nenhuma mensagem ainda';
 
   const formatTimestamp = (timestamp: number): string => {
     const date = new Date(timestamp);
@@ -29,7 +29,7 @@ export default function ConversationItem({ conversation, isActive, onClick, onDe
 
   const handleDelete = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm('Delete this conversation?')) {
+    if (confirm('Excluir esta conversa?')) {
       onDelete();
     }
   };
@@ -55,7 +55,7 @@ export default function ConversationItem({ conversation, isActive, onClick, onDe
         <button
           onClick={ handleDelete }
           className="opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500 text-xs p-1"
-          aria-label="Delete conversation"
+          aria-label="Excluir conversa"
         >
           ✕
         </button>

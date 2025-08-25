@@ -13,7 +13,7 @@ export default function MessageInput({
   onChange, 
   onSend, 
   loading, 
-  placeholder = "Type your message..." 
+  placeholder = "Digite sua mensagem..." 
 }: MessageInputProps) {
   const handleKeyPress = (e: KeyboardEvent<HTMLInputElement>) => {
     if (e.key === 'Enter' && !e.shiftKey) {
@@ -32,10 +32,10 @@ export default function MessageInput({
       onSubmit={handleSubmit}
       className="flex gap-2 sm:gap-3 p-3 sm:p-4 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm border-t border-gray-200 dark:border-gray-700"
       role="search"
-      aria-label="Message input"
+      aria-label="Campo de mensagem"
     >
       <label htmlFor="message-input" className="sr-only">
-        Message input
+        Campo de mensagem
       </label>
       <input
         id="message-input"
@@ -71,15 +71,15 @@ export default function MessageInput({
           focus:outline-none focus:ring-2 focus:ring-blue-500/50
         " 
         disabled={loading || !value.trim()}
-        aria-label={loading ? "Sending message..." : "Send message"}
+        aria-label={loading ? "Enviando mensagem..." : "Enviar mensagem"}
       >
         {loading ? (
           <div className="flex items-center gap-2">
             <div className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" />
-            <span className="hidden sm:inline">Sending...</span>
+            <span className="hidden sm:inline">Enviando...</span>
           </div>
         ) : (
-          <span>Send</span>
+          <span>Enviar</span>
         )}
       </button>
     </form>

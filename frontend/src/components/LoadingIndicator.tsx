@@ -4,7 +4,7 @@ interface LoadingIndicatorProps {
 }
 
 export default function LoadingIndicator({ 
-  message = "Typing...", 
+  message = "Digitando...", 
   size = 'md' 
 }: LoadingIndicatorProps) {
   const sizeClasses = {
