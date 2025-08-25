@@ -1,142 +1,114 @@
-"""Redis client for caching and session management."""
+"""Redis client for logs and health monitoring with graceful degradation."""
 
 import redis
 import json
 import os
+import time
 from typing import Optional, Any
 from dotenv import load_dotenv
 
 load_dotenv()
 
 class RedisClient:
-    """Redis client with fallback to work without Redis."""
+    """Redis client with retry logic and graceful fallback for production use."""
     
     def __init__(self):
         self.redis_url = os.getenv("REDIS_URL", "redis://localhost:6379")
         self.client = None
         self.connected = False
+        self.warning_printed = False
+        self.max_retries = 3
+        self.base_delay = 0.1  # 100ms base delay for exponential backoff
+        
+        self._connect_with_retry()
+    
+    def _connect_with_retry(self):
+        """Attempt to connect to Redis with exponential backoff retry logic."""
+        for attempt in range(self.max_retries):
+            try:
+                if self.redis_url.startswith("rediss://"):
+                    self.client = redis.from_url(
+                        self.redis_url, 
+                        decode_responses=True, 
+                        ssl_cert_reqs=None,
+                        socket_timeout=5,
+                        socket_connect_timeout=5
+                    )
+                else:
+                    self.client = redis.from_url(
+                        self.redis_url, 
+                        decode_responses=True,
+                        socket_timeout=5,
+                        socket_connect_timeout=5
+                    )
+                
+                self.client.ping()
+                self.connected = True
+                print("Redis connected successfully")
+                return
+                
+            except (redis.ConnectionError, redis.RedisError, Exception) as e:
+                if attempt < self.max_retries - 1:
+                    delay = self.base_delay * (2 ** attempt)  # Exponential backoff
+                    time.sleep(delay)
+                else:
+                    if not self.warning_printed:
+                        print(f"WARNING: Redis not available after {self.max_retries} attempts, using fallback mode: {str(e)}")
+                        self.warning_printed = True
+                    self.connected = False
+    
+    def is_connected(self) -> bool:
+        """Check if Redis is connected."""
+        return self.connected
+    
+    def log_entry(self, entry: dict) -> bool:
+        """Store log entry in Redis (last 100 entries only)."""
+        if not self.connected:
+            return False
+        try:
+            log_data = json.dumps({
+                **entry,
+                "timestamp": time.time()
+            })
+            self.client.lpush("app_logs", log_data)
+            self.client.ltrim("app_logs", 0, 99)  # Keep only last 100 items
+            return True
+        except Exception:
+            # Silently fail - don't let logging crash the app
+            return False
+    
+    def get_recent_logs(self, count: int = 100) -> list:
+        """Get recent log entries from Redis."""
+        if not self.connected:
+            return []
+        try:
+            logs = self.client.lrange("app_logs", 0, count - 1)
+            return [json.loads(log) for log in logs]
+        except Exception:
+            return []
+    
+    def health_check(self) -> dict:
+        """Return Redis health status."""
+        if not self.connected:
+            return {
+                "connected": False,
+                "status": "disconnected",
+                "error": "Redis connection not available"
+            }
         
         try:
-            # Support for Redis Cloud with SSL
-            if self.redis_url.startswith("rediss://"):
-                self.client = redis.from_url(self.redis_url, decode_responses=True, ssl_cert_reqs=None)
-            else:
-                self.client = redis.from_url(self.redis_url, decode_responses=True)
-            
             self.client.ping()
-            self.connected = True
-            print("✅ Redis connected successfully")
-        except (redis.ConnectionError, redis.RedisError) as e:
-            print(f"⚠️ Redis not available, using fallback mode: {e}")
+            return {
+                "connected": True,
+                "status": "healthy",
+                "url": self.redis_url.replace(self.redis_url.split('@')[0].split('//')[1], '***') if '@' in self.redis_url else self.redis_url
+            }
+        except Exception as e:
             self.connected = False
-    
-    def get(self, key: str) -> Optional[str]:
-        """Get value from Redis, returns None if not connected."""
-        if not self.connected:
-            return None
-        try:
-            return self.client.get(key)
-        except:
-            return None
-    
-    def set(self, key: str, value: str, ex: int = 3600) -> bool:
-        """Set value in Redis with expiration, returns False if not connected."""
-        if not self.connected:
-            return False
-        try:
-            self.client.set(key, value, ex=ex)
-            return True
-        except:
-            return False
-    
-    def get_json(self, key: str) -> Optional[dict]:
-        """Get JSON value from Redis."""
-        value = self.get(key)
-        if value:
-            try:
-                return json.loads(value)
-            except:
-                return None
-        return None
-    
-    def set_json(self, key: str, value: dict, ex: int = 3600) -> bool:
-        """Set JSON value in Redis."""
-        try:
-            json_str = json.dumps(value)
-            return self.set(key, json_str, ex)
-        except:
-            return False
-    
-    def delete(self, key: str) -> bool:
-        """Delete key from Redis."""
-        if not self.connected:
-            return False
-        try:
-            self.client.delete(key)
-            return True
-        except:
-            return False
-    
-    def exists(self, key: str) -> bool:
-        """Check if key exists in Redis."""
-        if not self.connected:
-            return False
-        try:
-            return self.client.exists(key) > 0
-        except:
-            return False
-    
-    def lpush(self, key: str, value: str) -> bool:
-        """Push value to Redis list (for logs)."""
-        if not self.connected:
-            return False
-        try:
-            self.client.lpush(key, value)
-            self.client.ltrim(key, 0, 99)  # Keep only last 100 items
-            return True
-        except:
-            return False
-    
-    def lrange(self, key: str, start: int = 0, end: int = -1) -> list:
-        """Get list from Redis."""
-        if not self.connected:
-            return []
-        try:
-            return self.client.lrange(key, start, end)
-        except:
-            return []
-    
-    def store_conversation(self, session_id: str, message: dict) -> bool:
-        """Store conversation message in Redis."""
-        if not self.connected:
-            return False
-        try:
-            key = f"conversation:{session_id}"
-            self.lpush(key, json.dumps(message))
-            self.client.expire(key, 86400)  # Keep for 24 hours
-            return True
-        except:
-            return False
-    
-    def get_conversation(self, session_id: str) -> list:
-        """Get conversation history from Redis."""
-        if not self.connected:
-            return []
-        try:
-            key = f"conversation:{session_id}"
-            messages = self.lrange(key, 0, -1)
-            return [json.loads(msg) for msg in messages]
-        except:
-            return []
-    
-    def cache_response(self, query_hash: str, response: str, ex: int = 3600) -> bool:
-        """Cache agent response."""
-        key = f"response:{query_hash}"
-        return self.set(key, response, ex)
-    
-    def get_cached_response(self, query_hash: str) -> Optional[str]:
-        """Get cached agent response."""
-        key = f"response:{query_hash}"
-        return self.get(key)
+            return {
+                "connected": False,
+                "status": "error",
+                "error": str(e)
+            }
 
 redis_client = RedisClient()

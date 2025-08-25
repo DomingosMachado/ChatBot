@@ -42,6 +42,22 @@ def get_db():
     finally:
         db.close()
 
+@app.get("/health")
+async def health_check():
+    """Health check endpoint with Redis status."""
+    redis_health = redis_client.health_check()
+    
+    return {
+        "status": "healthy",
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+        "redis": redis_health,
+        "database": "sqlite_operational",
+        "services": {
+            "agents": "operational",
+            "validation": "operational"
+        }
+    }
+
 @app.post("/chat", response_model=ChallengeResponse)
 async def chat_challenge_format(request: ChallengeRequest, db: Session = Depends(get_db)):
     """Challenge-compliant chat endpoint with validation."""
@@ -78,11 +94,13 @@ async def chat_challenge_format(request: ChallengeRequest, db: Session = Depends
     db.add(db_user_msg)
     db.commit()
 
-    # Store in Redis for fast access
-    redis_client.store_conversation(session_id, {
-        "role": "user",
-        "content": user_message,
-        "timestamp": datetime.now(timezone.utc).isoformat()
+    # Log user message to Redis
+    redis_client.log_entry({
+        "type": "user_message",
+        "session_id": session_id,
+        "user_id": user_id,
+        "content_length": len(user_message),
+        "event": "message_received"
     })
 
     try:
@@ -126,12 +144,16 @@ async def chat_challenge_format(request: ChallengeRequest, db: Session = Depends
         db.add(db_assistant_msg)
         db.commit()
 
-        # Store assistant response in Redis
-        redis_client.store_conversation(session_id, {
-            "role": "assistant",
-            "content": full_response,
-            "agent": agent_type,
-            "timestamp": datetime.now(timezone.utc).isoformat()
+        # Log assistant response to Redis
+        redis_client.log_entry({
+            "type": "assistant_response",
+            "session_id": session_id,
+            "user_id": user_id,
+            "agent_type": agent_type,
+            "response_length": len(full_response),
+            "tokens": assistant_tokens,
+            "execution_time": exec_time,
+            "event": "response_generated"
         })
         
         workflow = [
@@ -151,8 +173,24 @@ async def chat_challenge_format(request: ChallengeRequest, db: Session = Depends
         return response
         
     except ValidationError as e:
+        redis_client.log_entry({
+            "type": "error",
+            "session_id": session_id,
+            "user_id": user_id,
+            "error": "validation_error",
+            "details": str(e),
+            "event": "request_failed"
+        })
         raise HTTPException(status_code=422, detail=str(e))
     except Exception as e:
+        redis_client.log_entry({
+            "type": "error", 
+            "session_id": session_id,
+            "user_id": user_id,
+            "error": "internal_error",
+            "details": str(e),
+            "event": "request_failed"
+        })
         raise HTTPException(status_code=500, detail=ErrorMessages.GENERIC_ERROR)
 
 @app.post("/api/chat")

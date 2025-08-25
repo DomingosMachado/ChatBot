@@ -29,12 +29,19 @@ run:
 	@make -j 2 backend frontend
 
 test:
-	cd backend && python -m pytest test_api.py -v
-	cd backend && python test_chat_endpoint.py
-	cd backend && python test_complete_system.py
+	cd backend && python -m pytest tests/ -v
 
 test-quick:
-	cd backend && python -m pytest test_api.py -v --tb=short
+	cd backend && python -m pytest tests/ -v --tb=short
+
+test-integration:
+	cd backend && python -m pytest tests/test_integration.py -v
+
+test-challenge:
+	cd backend && python -m pytest tests/test_challenge.py -v
+
+test-api:
+	cd backend && python -m pytest tests/test_api.py -v
 
 clean:
 	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true

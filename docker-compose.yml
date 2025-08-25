@@ -30,8 +30,20 @@ services:
       - cloudwalk-network
     restart: unless-stopped
 
+  redis:
+    image: redis:alpine
+    container_name: cloudwalk-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    networks:
+      - cloudwalk-network
+    restart: unless-stopped
+
 volumes:
   backend-data:
+  redis-data:
 
 networks:
   cloudwalk-network:
