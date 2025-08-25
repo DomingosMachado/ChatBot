@@ -1,10 +1,9 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
-
-interface Message {
-  role: string;
-  content: string;
-}
+import ChatMessage from '../components/ChatMessage';
+import MessageInput from '../components/MessageInput';
+import LoadingIndicator from '../components/LoadingIndicator';
+import { Message } from '../types/chat';
 
 export default function Chat() {
   const [messages, setMessages] = useState<Message[]>([]);
@@ -70,14 +69,14 @@ export default function Chat() {
                   return updatedMessages;
                 });
               }
-            } catch (error) {
+            } catch {
               // Ignore JSON parse errors
             }
           }
         }
       }
-    } catch (error) {
-      console.error('Error sending message:', error);
+    } catch (err) {
+      console.error('Error sending message:', err);
       setMessages(prev => {
         const updated = [...prev];
         const last = updated[updated.length - 1];
@@ -92,37 +91,57 @@ export default function Chat() {
   };
 
   return (
-    <div className="flex flex-col h-screen max-w-4xl mx-auto p-4 font-sans">
-      <div className="flex-1 overflow-y-auto mb-4 p-4 border rounded-lg bg-white/50 dark:bg-black/50">
-        { messages.map((msg, idx) => (
-          <div key={ idx } className={ `mb-4 flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}` }>
-            <div className={ `p-3 rounded-lg max-w-[80%] whitespace-pre-wrap ${msg.role === 'user' ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-800 dark:bg-gray-700 dark:text-gray-200'}` }>
-              <p>{ msg.content }</p>
+    <div className="flex flex-col h-screen max-w-4xl mx-auto font-sans">
+      <header className="p-4 sm:p-6 text-center border-b border-gray-200 dark:border-gray-700 bg-white/80 dark:bg-gray-900/80 backdrop-blur-sm">
+        <h1 className="text-xl sm:text-2xl font-bold text-gray-800 dark:text-gray-200">
+          CloudWalk Chat Assistant
+        </h1>
+        <p className="text-sm sm:text-base text-gray-600 dark:text-gray-400 mt-1">
+          How can I help you today?
+        </p>
+      </header>
+      
+      <main 
+        className="flex-1 overflow-y-auto p-3 sm:p-4 bg-white/30 dark:bg-black/30"
+        role="main"
+        aria-label="Chat conversation"
+      >
+        <div className="max-w-3xl mx-auto">
+          {messages.length === 0 && (
+            <div className="text-center py-12 sm:py-20">
+              <div className="text-4xl sm:text-6xl mb-4">💬</div>
+              <h2 className="text-lg sm:text-xl font-semibold text-gray-600 dark:text-gray-400 mb-2">
+                Start a conversation
+              </h2>
+              <p className="text-sm sm:text-base text-gray-500 dark:text-gray-500">
+                Ask me anything and I&apos;ll be happy to help!
+              </p>
             </div>
-          </div>
-        )) }
-        { loading && messages[messages.length - 1]?.role === 'user' && (
-          <div className="mb-4 flex justify-start">
-            <div className="p-3 rounded-lg bg-gray-200 text-gray-500 dark:bg-gray-700 dark:text-gray-400">
-              Typing...
-            </div>
-          </div>
-        ) }
-        <div ref={ messagesEndRef } />
-      </div>
-      <div className="flex gap-2">
-        <input
-          value={ input }
-          onChange={ (e) => setInput(e.target.value) }
-          onKeyPress={ (e) => e.key === 'Enter' && sendMessage() }
-          className="flex-1 p-2 border rounded text-gray-800 bg-white dark:bg-gray-900 dark:text-gray-200 dark:border-gray-600"
-          placeholder="Type your message..."
-          disabled={ loading }
-        />
-        <button onClick={ sendMessage } className="px-4 py-2 bg-blue-500 text-white rounded disabled:bg-blue-300" disabled={ loading }>
-          Send
-        </button>
-      </div>
+          )}
+          
+          {messages.map((msg, idx) => (
+            <ChatMessage 
+              key={idx} 
+              message={msg} 
+              isLast={idx === messages.length - 1 && loading}
+            />
+          ))}
+          
+          {loading && messages[messages.length - 1]?.role === 'user' && (
+            <LoadingIndicator message="Thinking..." />
+          )}
+          
+          <div ref={messagesEndRef} />
+        </div>
+      </main>
+
+      <MessageInput
+        value={input}
+        onChange={setInput}
+        onSend={sendMessage}
+        loading={loading}
+        placeholder="Ask me anything..."
+      />
     </div>
   );
 }

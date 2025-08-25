@@ -1,140 +1,165 @@
-# CloudWalk AI Chat Assistant
+# SWE Coding Challenge - Multi-Agent Chat System
 
-A multi-agent chatbot that intelligently routes queries between specialized agents for math calculations and InfinitePay knowledge base questions.
-
-## Quick Start
-
-```bash
-# Clone and setup
-git clone <repo>
-cd chatbot
-
-# Backend (Terminal 1)
-cd backend
-pip install -r requirements.txt
-python load_context.py
-uvicorn app:app --reload
-
-# Frontend (Terminal 2)
-cd frontend
-npm install
-npm run dev
-```
-
-Access the chat at http://localhost:3000
+A distributed chat system with intelligent agents, conversation routing, and real-time logging.
 
 ## Architecture
 
-The system uses three agents:
+**Router**: Load balances requests across agent instances  
+**Agents**: Process conversations with AI capabilities  
+**Logs**: Centralized logging with Redis storage  
+**Redis**: Message queue and conversation state management
 
-- **RouterAgent**: Classifies incoming queries and routes to appropriate agent
-- **KnowledgeAgent**: Handles InfinitePay questions using RAG (vector search)
-- **MathAgent**: Processes mathematical calculations using Gemini LLM
-
-## API
-
-### POST /chat
-
-Challenge-compliant endpoint for the CloudWalk test.
-
-**Request:**
-
-```json
-{
-  "message": "O que é a maquininha Smart?",
-  "user_id": "user123",
-  "conversation_id": "conv456"
-}
-```
-
-**Response:**
-
-```json
-{
-  "response": "A maquininha Smart é nossa solução...",
-  "source_agent_response": "Retrieved from 3 chunks in knowledge base",
-  "agent_workflow": [
-    { "agent": "RouterAgent", "decision": "KnowledgeAgent" },
-    { "agent": "KnowledgeAgent", "decision": "" }
-  ]
-}
-```
-
-### Additional Endpoints
-
-- `POST /api/chat` - Streaming chat for frontend
-- `GET /api/history/{session_id}` - Conversation history
-- `GET /api/analytics` - Agent performance metrics
-- `GET /api/logs/recent` - Recent execution logs
-
-## Testing
+## Running Locally (Docker + docker-compose)
 
 ```bash
-cd backend
+# Clone and start all services
+git clone <repository-url>
+cd swe-coding-challenge
+docker-compose up -d
 
-# Test API contract compliance
-python test_chat_endpoint.py
+# Verify services are running
+docker-compose ps
+```
 
-# Full system test
-python test_complete_system.py
+Services will be available at:
 
-# Test individual components
-python test_rag_system.py
-python test_models.py
+- Frontend: http://localhost:3000
+- API Router: http://localhost:8000
+- Redis: localhost:6379
+
+## Running on Kubernetes
+
+```bash
+# Apply all manifests
+kubectl apply -f k8s/
+
+# Check deployment status
+kubectl get pods
+kubectl get services
+
+# Port forward to access locally
+kubectl port-forward service/frontend 3000:3000
+kubectl port-forward service/api-router 8000:8000
+```
+
+## Frontend Access & Testing
+
+Access the chat interface at http://localhost:3000
+
+**Multiple Conversations:**
+
+1. Open multiple browser tabs/windows
+2. Start different conversations in each tab
+3. Verify each conversation maintains separate context
+4. Test concurrent message sending
+5. Check conversation history persistence
+
+**API Endpoints:**
+
+- `POST /chat` - Send message
+- `GET /conversations` - List conversations
+- `GET /conversations/{id}` - Get conversation history
+
+## Example Logs (JSON)
+
+```json
+{
+  "timestamp": "2024-08-24T15:30:45Z",
+  "level": "INFO",
+  "service": "agent-1",
+  "conversation_id": "conv_123",
+  "message": "Processing user message",
+  "user_input": "Hello, how are you?",
+  "response_time_ms": 245,
+  "metadata": {
+    "agent_version": "1.0.0",
+    "model": "gpt-4"
+  }
+}
+```
+
+```json
+{
+  "timestamp": "2024-08-24T15:30:47Z",
+  "level": "INFO",
+  "service": "router",
+  "conversation_id": "conv_123",
+  "message": "Request routed to agent",
+  "agent_id": "agent-1",
+  "load_balance_method": "round_robin",
+  "active_agents": 3
+}
+```
+
+## Sanitization & Prompt Injection Protection
+
+**Input Sanitization:**
+
+- HTML/script tag removal
+- SQL injection pattern detection
+- Malicious payload filtering
+- Input length validation
+
+**Prompt Injection Protection:**
+
+- System prompt isolation
+- User input sandboxing
+- Context boundary enforcement
+- Adversarial prompt detection
+
+**Implementation:**
+
+```python
+def sanitize_input(user_input: str) -> str:
+    # Remove HTML tags and dangerous patterns
+    sanitized = re.sub(r'<[^>]+>', '', user_input)
+    # Filter prompt injection attempts
+    dangerous_patterns = ['ignore previous', 'system:', 'assistant:']
+    for pattern in dangerous_patterns:
+        sanitized = sanitized.replace(pattern, '[FILTERED]')
+    return sanitized[:1000]  # Limit length
+```
+
+## Running Tests
+
+```bash
+# Unit tests
+pytest tests/unit/
+
+# Integration tests
+pytest tests/integration/
+
+# Load tests
+pytest tests/load/ --workers=10
+
+# All tests with coverage
+pytest --cov=src tests/
+```
+
+**Test Categories:**
+
+- Unit: Individual component testing
+- Integration: Multi-service communication
+- Load: Performance under concurrent users
+- Security: Sanitization and injection protection
+
+## Development
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run in development mode
+docker-compose -f docker-compose.dev.yml up
+
+# View logs
+docker-compose logs -f agent
+docker-compose logs -f router
 ```
 
 ## Environment Variables
 
-Create `.env` file in backend directory:
-
-```
-GOOGLE_API_KEY=your_gemini_api_key
-DATABASE_URL=sqlite:///./chat_history.db
-```
-
-## Requirements
-
-- Python 3.8+
-- Node.js 18+
-- Google Gemini API key
-
-## Project Structure
-
-```
-backend/
-├── app.py              # FastAPI server and endpoints
-├── agents.py           # Router, Knowledge, and Math agents
-├── rag.py              # Vector search implementation
-├── database.py         # SQLAlchemy models
-├── models.py           # Pydantic schemas
-├── logger_config.py    # JSON structured logging
-└── context/            # InfinitePay knowledge base
-
-frontend/
-├── src/app/
-│   └── page.tsx        # Chat interface
-└── package.json
-```
-
-## Logging
-
-All agents produce structured JSON logs with correlation IDs for request tracking:
-
-```json
-{
-  "timestamp": "2024-01-20T10:30:00Z",
-  "level": "INFO",
-  "logger": "KnowledgeAgent",
-  "correlation_id": "abc123",
-  "execution_time_ms": 150,
-  "message": "Query processed successfully"
-}
-```
-
-## Performance
-
-Average response times:
-
-- KnowledgeAgent: ~500ms (includes vector search)
-- MathAgent: ~200ms
-- RouterAgent: <50ms
+- `REDIS_URL`: Redis connection string
+- `AGENT_COUNT`: Number of agent replicas
+- `LOG_LEVEL`: Logging verbosity (INFO/DEBUG)
+- `API_KEY`: Authentication key (if enabled)
